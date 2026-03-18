@@ -11,9 +11,9 @@ path=""
 
 while True:
     ret, frame = cam.read()
-    cv2.imshow("test", frame)
     if not ret:
         break
+    cv2.imshow("test", frame)
     k = cv2.waitKey(1)
 
     if k%256 == 27:
@@ -26,3 +26,7 @@ while True:
         cv2.imwrite("dataset/sameer/"+img_name, frame)
         print("{} written!".format(img_name))
         img_counter += 1
+
+# Clean up resources
+cam.release()
+cv2.destroyAllWindows()
