@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+
+{% block title %}Face Enrollment - School Attendance System{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-camera"></i> Face Enrollment</h1>
+    <div>
+        <span class="badge bg-info" id="enrollment-badge">Loading...</span>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Camera Capture -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5><i class="bi bi-camera-video"></i> Capture Face</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label for="student-select" class="form-label">Select Student <span class="text-danger">*</span></label>
+                    <select class="form-control" id="student-select" onchange="onStudentSelected()">
+                        <option value="">Choose a student...</option>
+                    </select>
+                </div>
+
+                <div id="selected-student-info" style="display: none;" class="alert alert-info mb-3">
+                    <strong>Student:</strong> <span id="selected-student-name"></span> 
+                    <br><strong>Roll No:</strong> <span id="selected-student-roll"></span>
+                    <br><strong>Status:</strong> <span id="selected-student-status" class="badge bg-warning">Not Registered</span>
+                </div>
+
+                <div id="camera-container" style="display: none;">
+                    <div class="position-relative" style="background: #000; border-radius: 8px; overflow: hidden;">
+                        <video id="camera-feed" style="width: 100%; max-height: 400px; display: block;"></video>
+                        <div id="face-detection-indicator" style="position: absolute; top: 10px; right: 10px; padding: 10px 15px; background: rgba(255,0,0,0.7); color: white; border-radius: 5px; display: none;">
+                            <i class="bi bi-check-circle"></i> Face Detected
+                        </div>
+                    </div>
+
+                    <div class="mt-3 d-flex gap-2">
+                        <button class="btn btn-success flex-grow-1" id="capture-btn" onclick="captureFrame()" disabled>
+                            <i class="bi bi-camera"></i> Capture Face
+                        </button>
+                        <button class="btn btn-secondary flex-grow-1" id="retake-btn" onclick="stopCamera()" style="display: none;">
+                            <i class="bi bi-arrow-counterclockwise"></i> Retake
+                        </button>
+                    </div>
+
+                    <div id="capture-status" class="alert alert-info mt-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span>Processing face...</span>
+                    </div>
+
+                    <div id="capture-result" class="alert mt-3" style="display: none;">
+                        <div id="result-text"></div>
+                        <div id="result-details" style="margin-top: 10px;"></div>
+                    </div>
+                </div>
+
+                <div id="no-student-message" class="alert alert-warning">
+                    Please select a student to begin face enrollment.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Face Upload Alternative -->
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5><i class="bi bi-upload"></i> Upload Image</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Alternative: Upload a face image file</p>
+                
+                <div class="mb-3">
+                    <label for="face-image-upload" class="form-label">Choose Image</label>
+                    <input type="file" class="form-control" id="face-image-upload" accept="image/*" disabled>
+                </div>
+
+                <button class="btn btn-success w-100" id="upload-face-btn" onclick="uploadFaceImage()" disabled>
+                    <i class="bi bi-cloud-upload"></i> Upload & Register
+                </button>
+
+                <div id="upload-result" class="alert mt-3" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Enrollment Statistics -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5><i class="bi bi-bar-chart"></i> Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>Total Students:</strong> <span id="stat-total" class="badge bg-primary">0</span>
+                </div>
+                <div class="mb-2">
+                    <strong>Enrolled:</strong> <span id="stat-enrolled" class="badge bg-success">0</span>
+                </div>
+                <div class="mb-2">
+                    <strong>Pending:</strong> <span id="stat-pending" class="badge bg-warning">0</span>
+                </div>
+                <div class="mb-3" style="margin-top: 15px;">
+                    <div class="progress" style="height: 25px;">
+                        <div id="enrollment-progress" class="progress-bar bg-success" role="progressbar" style="width: 0%">
+                            <span id="progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-info w-100" onclick="refreshStats()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh Stats
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Training Model Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h5><i class="bi bi-gear"></i> Model Training</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Train the facial recognition model after enrolling faces</p>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-warning" id="train-btn" onclick="trainModel()">
+                        <i class="bi bi-cpu"></i> Train Model
+                    </button>
+                    <div id="train-result" class="alert alert-info w-100" style="margin: 0; display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedStudentId = null;
+    let cameraStream = null;
+    let cameraActive = false;
+    const video = document.getElementById('camera-feed');
+    const canvas = document.createElement('canvas');
+    const canvasContext = canvas.getContext('2d');
+
+    $(document).ready(function() {
+        loadStudents();
+        loadEnrollmentStats();
+        // Refresh stats every 30 seconds
+        setInterval(loadEnrollmentStats, 30000);
+    });
+
+    function loadStudents() {
+        $.ajax({
+            url: '/api/students',
+            method: 'GET',
+            success: function(data) {
+                const select = $('#student-select');
+                select.empty();
+                select.append('<option value="">Choose a student...</option>');
+                
+                data.forEach(function(student) {
+                    select.append(`
+                        <option value="${student.student_id}" data-name="${student.name}" data-roll="${student.roll_number}">
+                            ${student.roll_number} - ${student.name}
+                        </option>
+                    `);
+                });
+            },
+            error: function() {
+                alert('Error loading students');
+            }
+        });
+    }
+
+    function onStudentSelected() {
+        const select = $('#student-select');
+        selectedStudentId = parseInt(select.val());
+        
+        if (!selectedStudentId) {
+            $('#camera-container').hide();
+            $('#no-student-message').show();
+            $('#selected-student-info').hide();
+            $('#face-image-upload').prop('disabled', true);
+            $('#upload-face-btn').prop('disabled', true);
+            stopCamera();
+            return;
+        }
+        
+        $('#no-student-message').hide();
+        $('#camera-container').show();
+        $('#selected-student-info').show();
+        $('#face-image-upload').prop('disabled', false);
+        $('#upload-face-btn').prop('disabled', false);
+        
+        // Update student info display
+        const selectedOption = select.find('option:selected');
+        $('#selected-student-name').text(selectedOption.data('name'));
+        $('#selected-student-roll').text(selectedOption.data('roll'));
+        
+        // Check enrollment status
+        checkEnrollmentStatus(selectedStudentId);
+        
+        // Start camera
+        startCamera();
+    }
+
+    function startCamera() {
+        if (cameraActive) return;
+        
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+            .then(function(stream) {
+                cameraStream = stream;
+                video.srcObject = stream;
+                cameraActive = true;
+                $('#capture-btn').prop('disabled', false);
+                $('#retake-btn').show();
+            })
+            .catch(function(err) {
+                alert('Error accessing camera: ' + err.message);
+                console.error('Camera error:', err);
+            });
+    }
+
+    function stopCamera() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+        }
+        cameraActive = false;
+        $('#capture-btn').prop('disabled', true);
+        $('#retake-btn').hide();
+        $('#face-detection-indicator').hide();
+    }
+
+    function captureFrame() {
+        if (!cameraActive) {
+            alert('Camera not active');
+            return;
+        }
+        
+        if (!selectedStudentId) {
+            alert('Please select a student');
+            return;
+        }
+
+        try {
+            // Set canvas size to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw current frame
+            canvasContext.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/png');
+            
+            // Show processing message
+            $('#capture-status').show();
+            $('#capture-result').hide();
+            
+            // Send to server
+            $.ajax({
+                url: '/api/face/capture',
+                method: 'POST',
+                data: {
+                    student_id: selectedStudentId,
+                    image_data: imageData
+                },
+                success: function(response) {
+                    $('#capture-status').hide();
+                    
+                    if (response.status === 'success') {
+                        $('#capture-result')
+                            .removeClass('alert-danger')
+                            .addClass('alert-success')
+                            .show();
+                        
+                        $('#result-text').html(`
+                            <i class="bi bi-check-circle text-success"></i> 
+                            <strong>Face Captured Successfully!</strong>
+                        `);
+                        
+                        $('#result-details').html(`
+                            <small>
+                                Confidence: <strong>${(response.confidence * 100).toFixed(2)}%</strong><br>
+                                Image saved to: <strong>${response.image_path}</strong>
+                            </small>
+                        `);
+                        
+                        // Update status
+                        setTimeout(function() {
+                            checkEnrollmentStatus(selectedStudentId);
+                            loadEnrollmentStats();
+                        }, 1000);
+                    } else {
+                        $('#capture-result')
+                            .removeClass('alert-success')
+                            .addClass('alert-danger')
+                            .show();
+                        
+                        $('#result-text').html(`
+                            <i class="bi bi-x-circle text-danger"></i> 
+                            <strong>Error:</strong> ${response.message}
+                        `);
+                    }
+                },
+                error: function(xhr) {
+                    $('#capture-status').hide();
+                    $('#capture-result')
+                        .removeClass('alert-success')
+                        .addClass('alert-danger')
+                        .show();
+                    $('#result-text').html('<i class="bi bi-exclamation-triangle"></i> Error processing face');
+                }
+            });
+        } catch (err) {
+            alert('Error capturing frame: ' + err.message);
+        }
+    }
+
+    function uploadFaceImage() {
+        const fileInput = document.getElementById('face-image-upload');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            alert('Please select an image file');
+            return;
+        }
+        
+        if (!selectedStudentId) {
+            alert('Please select a student');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('student_id', selectedStudentId);
+        formData.append('face_image', file);
+        
+        $('#upload-result').html(`
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            Uploading and processing...
+        `).removeClass('alert-success alert-danger').addClass('alert-info').show();
+        
+        $.ajax({
+            url: '/api/face/add-manual',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.status === 'success') {
+                    $('#upload-result')
+                        .removeClass('alert-info alert-danger')
+                        .addClass('alert-success')
+                        .html(`<i class="bi bi-check-circle"></i> Face uploaded successfully!`);
+                    
+                    fileInput.value = '';
+                    checkEnrollmentStatus(selectedStudentId);
+                    loadEnrollmentStats();
+                } else {
+                    $('#upload-result')
+                        .removeClass('alert-info alert-success')
+                        .addClass('alert-danger')
+                        .html(`<i class="bi bi-x-circle"></i> Error: ${response.message}`);
+                }
+            },
+            error: function() {
+                $('#upload-result')
+                    .removeClass('alert-info alert-success')
+                    .addClass('alert-danger')
+                    .html('<i class="bi bi-exclamation-triangle"></i> Error uploading image');
+            }
+        });
+    }
+
+    function checkEnrollmentStatus(studentId) {
+        $.ajax({
+            url: `/api/face/status?student_id=${studentId}`,
+            method: 'GET',
+            success: function(response) {
+                if (response.status === 'success') {
+                    const badge = response.face_registered ? 
+                        '<span class="badge bg-success">Enrolled</span>' :
+                        '<span class="badge bg-warning">Not Registered</span>';
+                    
+                    $('#selected-student-status').replaceWith(badge);
+                    $('#selected-student-status').attr('id', 'selected-student-status');
+                }
+            }
+        });
+    }
+
+    function loadEnrollmentStats() {
+        $.ajax({
+            url: '/api/face/stats',
+            method: 'GET',
+            success: function(response) {
+                if (response.status === 'success') {
+                    $('#stat-total').text(response.total_students);
+                    $('#stat-enrolled').text(response.enrolled_students);
+                    $('#stat-pending').text(response.pending_students);
+                    
+                    const percentage = response.enrollment_percentage;
+                    $('#enrollment-progress').css('width', percentage + '%');
+                    $('#progress-text').text(percentage.toFixed(1) + '%');
+                    
+                    const badge = percentage === 100 ? 
+                        '<span class="badge bg-success">All Enrolled</span>' :
+                        `<span class="badge bg-info">${percentage.toFixed(1)}% Enrolled</span>`;
+                    $('#enrollment-badge').replaceWith(badge);
+                    $('#enrollment-badge').attr('id', 'enrollment-badge');
+                }
+            }
+        });
+    }
+
+    function trainModel() {
+        if (!confirm('Train the facial recognition model? This may take a moment.')) {
+            return;
+        }
+        
+        const resultDiv = $('#train-result')
+            .html(`
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                Training model, please wait...
+            `)
+            .removeClass('alert-success alert-danger')
+            .addClass('alert-info')
+            .show();
+        
+        $.ajax({
+            url: '/api/face/train',
+            method: 'POST',
+            success: function(response) {
+                if (response.status === 'success') {
+                    resultDiv
+                        .removeClass('alert-info alert-danger')
+                        .addClass('alert-success')
+                        .html(`
+                            <i class="bi bi-check-circle"></i>
+                            Model trained successfully!<br>
+                            <small>Faces: ${response.num_faces} | Classes: ${response.num_classes}</small>
+                        `);
+                } else {
+                    resultDiv
+                        .removeClass('alert-info alert-success')
+                        .addClass('alert-danger')
+                        .html(`<i class="bi bi-x-circle"></i> ${response.message}`);
+                }
+            },
+            error: function() {
+                resultDiv
+                    .removeClass('alert-info alert-success')
+                    .addClass('alert-danger')
+                    .html('<i class="bi bi-exclamation-triangle"></i> Error training model');
+            }
+        });
+    }
+
+    function refreshStats() {
+        loadEnrollmentStats();
+        loadStudents();
+    }
+</script>
+{% endblock %}

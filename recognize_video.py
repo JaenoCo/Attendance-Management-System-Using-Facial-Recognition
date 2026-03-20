@@ -65,11 +65,11 @@ while True:
 
 			pred = recognizer.predict_proba(vec)[0]
 
-			j = np.argmax(preds)
-			proba = preds[j]
+			j = np.argmax(pred)
+			proba = pred[j]
 			name = le.classes_[j]
 
-			text = '{}: {.2f:}%'.format(name, proba * 100)
+			text = '{}: {:.2f}%'.format(name, proba * 100)
 
 			y = startY - 10 if startY-10 >10 else startY+10
 			cv2.rectangle(frame, (startX,startY), (endX,endY), (0,0,255), 2)
@@ -84,8 +84,7 @@ while True:
 
 
 fps.stop()
-print('Time : {.2f}'.format(fps.elapsed()))
+print('Time : {:.2f}'.format(fps.elapsed()))
 print('FPS : {:.2f}'.format(fps.fps()))
 
 cv2.destroyAllWindows()
-cv2.stop()

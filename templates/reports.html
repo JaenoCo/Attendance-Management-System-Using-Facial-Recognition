@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - School Attendance System{% endblock %}
+
+{% block content %}
+<h2><i class="bi bi-file-earmark-pdf"></i> Attendance Reports</h2>
+<hr>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Student Attendance Report</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Select Student</label>
+                    <select class="form-control" id="student-select">
+                        <option value="">-- Choose Student --</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" id="report-start-date">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" id="report-end-date">
+                </div>
+                <button class="btn btn-custom btn-block" onclick="generateReport()">
+                    <i class="bi bi-file-earmark-bar-chart"></i> Generate Report
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Export Options</h5>
+            </div>
+            <div class="card-body">
+                <button class="btn btn-outline-primary btn-block mb-2" onclick="exportCSV()">
+                    <i class="bi bi-file-earmark-csv"></i> Export as CSV
+                </button>
+                <button class="btn btn-outline-danger btn-block mb-2" onclick="exportPDF()">
+                    <i class="bi bi-file-earmark-pdf"></i> Export as PDF
+                </button>
+                <button class="btn btn-outline-success btn-block" onclick="printReport()">
+                    <i class="bi bi-printer"></i> Print Report
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card" id="report-card" style="display: none;">
+            <div class="card-header">
+                <h5>Attendance Report</h5>
+            </div>
+            <div class="card-body">
+                <div id="report-stats" class="row mb-4">
+                    <!-- Stats will be populated here -->
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="report-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Entry Time</th>
+                                <th>Exit Time</th>
+                                <th>Status</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Set date inputs to current month range
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        document.getElementById('report-start-date').valueAsDate = firstDay;
+        document.getElementById('report-end-date').valueAsDate = today;
+
+        loadStudentsForReport();
+    });
+
+    function loadStudentsForReport() {
+        $.get('/api/students', function(data) {
+            const select = $('#student-select');
+            select.empty();
+            select.append('<option value="">-- Choose Student --</option>');
+            data.forEach(student => {
+                select.append(`<option value="${student.student_id}">${student.roll_number} - ${student.first_name} ${student.last_name}</option>`);
+            });
+        });
+    }
+
+    function generateReport() {
+        const studentId = $('#student-select').val();
+        const startDate = $('#report-start-date').val();
+        const endDate = $('#report-end-date').val();
+
+        if (!studentId) {
+            alert('Please select a student');
+            return;
+        }
+
+        $.get('/api/reports/student-attendance', {
+            student_id: studentId,
+            start_date: startDate,
+            end_date: endDate
+        }, function(data) {
+            $('#report-card').show();
+
+            // Display stats
+            const stats = `
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <h5>Total Days</h5>
+                        <div class="number">${data.stats.total_days}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+                        <h5>Present</h5>
+                        <div class="number">${data.stats.present_days}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
+                        <h5>Absent</h5>
+                        <div class="number">${data.stats.absent_days}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%); color: #333;">
+                        <h5>Attendance %</h5>
+                        <div class="number">${data.stats.percentage.toFixed(2)}%</div>
+                    </div>
+                </div>
+            `;
+            $('#report-stats').html(stats);
+
+            // Populate table
+            const tbody = $('#report-table tbody');
+            tbody.empty();
+            data.attendance.forEach(record => {
+                const statusBadge = `<span class="badge badge-${record.status}">${record.status}</span>`;
+                const row = `
+                    <tr>
+                        <td>${record.date}</td>
+                        <td>${record.entry_time ? record.entry_time.substr(0, 5) : '-'}</td>
+                        <td>${record.exit_time ? record.exit_time.substr(0, 5) : '-'}</td>
+                        <td>${statusBadge}</td>
+                        <td>${record.remarks || '-'}</td>
+                    </tr>
+                `;
+                tbody.append(row);
+            });
+        }).fail(function(error) {
+            alert('Error generating report: ' + error.statusText);
+        });
+    }
+
+    function exportCSV() {
+        const studentId = $('#student-select').val();
+        if (!studentId) {
+            alert('Please select a student');
+            return;
+        }
+
+        const startDate = $('#report-start-date').val();
+        const endDate = $('#report-end-date').val();
+
+        window.location.href = `/api/reports/export-csv?student_id=${studentId}&start_date=${startDate}&end_date=${endDate}`;
+    }
+
+    function exportPDF() {
+        alert('PDF export coming soon!');
+    }
+
+    function printReport() {
+        window.print();
+    }
+</script>
+{% endblock %}

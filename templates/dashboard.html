@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - School Attendance System{% endblock %}
+
+{% block content %}
+<h2><i class="bi bi-speedometer2"></i> Dashboard</h2>
+<hr>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="stat-card">
+            <h5>Total Students</h5>
+            <div class="number" id="total-students">0</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card">
+            <h5>Present Today</h5>
+            <div class="number" id="today-present">0</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card">
+            <h5>Total Classes</h5>
+            <div class="number" id="total-classes">0</div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="/students" class="btn btn-custom btn-block mb-2">
+                    <i class="bi bi-people"></i> Manage Students
+                </a>
+                <a href="/attendance" class="btn btn-custom btn-block mb-2">
+                    <i class="bi bi-check-square"></i> Mark Attendance
+                </a>
+                <a href="/reports" class="btn btn-custom btn-block">
+                    <i class="bi bi-file-earmark-pdf"></i> View Reports
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>System Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>School Name:</strong> Your School Name</p>
+                <p><strong>Database:</strong> school_attendance (MySQL)</p>
+                <p><strong>School Hours:</strong> 08:00 - 15:30</p>
+                <p><strong>Late Threshold:</strong> 15 minutes</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Recent Scans</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Recent attendance scans will appear here...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load dashboard statistics
+    $.get('/api/dashboard-stats', function(data) {
+        $('#total-students').text(data.total_students);
+        $('#today-present').text(data.today_present);
+        $('#total-classes').text(data.total_classes);
+    });
+</script>
+{% endblock %}
