@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance - Attendance System{% endblock %}
+
+{% block content %}
+<h2>📍 Attendance Records</h2>
+
+<style>
+    .filters {
+        background: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .filters input, .filters select {
+        padding: 8px;
+        margin-right: 10px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    th {
+        background: #f5f5f5;
+        font-weight: 600;
+    }
+</style>
+
+<div class="filters">
+    <input type="date" id="dateFilter" onchange="filterAttendance()">
+    <select id="statusFilter" onchange="filterAttendance()">
+        <option value="">All Status</option>
+        <option value="present">Present</option>
+        <option value="absent">Absent</option>
+        <option value="late">Late</option>
+    </select>
+    <button onclick="loadAttendance()" style="padding: 8px 15px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh</button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Student</th>
+            <th>Roll Number</th>
+            <th>Entry Time</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody id="attendanceList">
+        <tr><td colspan="5" style="text-align: center;">Loading attendance records...</td></tr>
+    </tbody>
+</table>
+
+<script>
+    async function loadAttendance() {
+        try {
+            const response = await fetch('/api/attendance/today');
+            const data = await response.json();
+            
+            const tbody = document.getElementById('attendanceList');
+            if (!data.attendance || data.attendance.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No records found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.attendance.map(record => `
+                <tr>
+                    <td>${record.date}</td>
+                    <td>${record.first_name} ${record.last_name}</td>
+                    <td>${record.roll_number}</td>
+                    <td>${record.entry_time || '-'}</td>
+                    <td>${record.status}</td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+    
+    function filterAttendance() {
+        // Filter logic here
+    }
+    
+    loadAttendance();
+</script>
+{% endblock %}

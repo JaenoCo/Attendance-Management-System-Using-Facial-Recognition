@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Register Student</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px 10px 0 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 30px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 0 0 10px 10px;
+        }
+        
+        .form-section {
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .form-section h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 5px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .capture-section {
+            text-align: center;
+        }
+        
+        .capture-status {
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .capture-status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .capture-status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 15px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .student-list {
+            margin-top: 20px;
+        }
+        
+        .student-list h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .student-item {
+            background: white;
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #667eea;
+        }
+        
+        .student-item-info {
+            flex: 1;
+        }
+        
+        .student-item-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .student-item-id {
+            font-size: 12px;
+            color: #999;
+        }
+        
+        .student-item-status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 3px;
+            margin-left: 10px;
+        }
+        
+        .status-pending {
+            background: #ffeaa7;
+            color: #d63031;
+        }
+        
+        .status-trained {
+            background: #55efc4;
+            color: #00b894;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Student Registration & Face Enrollment</h1>
+            <p>Register new students and capture their face data for the facial recognition system</p>
+        </div>
+        
+        <div class="content">
+            <!-- Left Form -->
+            <div class="form-section">
+                <h2>1️⃣ Student Information</h2>
+                <form id="registrationForm">
+                    <div class="form-group">
+                        <label for="rollNumber">Student ID / Roll Number *</label>
+                        <input type="text" id="rollNumber" name="rollNumber" required 
+                               placeholder="e.g., STU-001">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="firstName">First Name *</label>
+                        <input type="text" id="firstName" name="firstName" required
+                               placeholder="e.g., John">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="lastName">Last Name *</label>
+                        <input type="text" id="lastName" name="lastName" required
+                               placeholder="e.g., Doe">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="classId">Class/Grade</label>
+                        <select id="classId" name="classId">
+                            <option value="">Select Class</option>
+                            <option value="1">Class 10-A</option>
+                            <option value="2">Class 10-B</option>
+                            <option value="3">Class 11-A</option>
+                            <option value="4">Class 11-B</option>
+                            <option value="5">Class 12-A</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit">➕ Register Student</button>
+                    <div id="registerMessage"></div>
+                </form>
+            </div>
+            
+            <!-- Right Face Capture -->
+            <div class="form-section capture-section">
+                <h2>2️⃣ Capture Face</h2>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    After registering, capture the student's face from multiple angles
+                </p>
+                
+                <div id="captureForm">
+                    <div class="form-group">
+                        <label for="studentSelect">Select Student *</label>
+                        <select id="studentSelect" required>
+                            <option value="">-- Choose a registered student --</option>
+                        </select>
+                    </div>
+                    
+                    <button type="button" id="captureBtn">📹 Capture Face</button>
+                    <div id="captureMessage"></div>
+                </div>
+                
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+                    <h3 style="color: #333; margin-bottom: 15px;">📊 Recently Registered</h3>
+                    <div id="studentsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Load students on page load
+        document.addEventListener('DOMContentLoaded', loadStudents);
+        
+        // Form submission
+        document.getElementById('registrationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const rollNumber = document.getElementById('rollNumber').value;
+            const firstName = document.getElementById('firstName').value;
+            const lastName = document.getElementById('lastName').value;
+            const classId = document.getElementById('classId').value;
+            
+            const messageDiv = document.getElementById('registerMessage');
+            messageDiv.className = 'message info';
+            messageDiv.textContent = '⏳ Registering student...';
+            messageDiv.style.display = 'block';
+            
+            try {
+                const formData = new FormData();
+                formData.append('roll_number', rollNumber);
+                formData.append('first_name', firstName);
+                formData.append('last_name', lastName);
+                if (classId) {
+                    formData.append('class_id', classId);
+                }
+                
+                const response = await fetch('/api/admin/register-student', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = '✅ ' + data.message;
+                    document.getElementById('registrationForm').reset();
+                    await loadStudents();
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = '❌ ' + (data.message || 'Registration failed');
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = '❌ Error: ' + (error.message || 'Unknown error occurred');
+                console.error('Registration error:', error);
+            }
+        });
+        
+        // Capture face button
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            const studentId = document.getElementById('studentSelect').value;
+            
+            if (!studentId) {
+                alert('Please select a student first');
+                return;
+            }
+            
+            const messageDiv = document.getElementById('captureMessage');
+            messageDiv.className = 'message info';
+            messageDiv.innerHTML = '<div class="spinner"></div><p>Opening camera for face capture...</p>';
+            messageDiv.style.display = 'block';
+            
+            try {
+                const formData = new FormData();
+                formData.append('student_id', studentId);
+                
+                const response = await fetch('/api/admin/capture-face', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = '✅ Camera opened! Capture the student\'s face from multiple angles. Press SPACE to capture and Q to quit.';
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = '❌ ' + data.message;
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = '❌ Error: ' + error.message;
+            }
+        });
+        
+        // Load students list
+        async function loadStudents() {
+            try {
+                const response = await fetch('/api/students');
+                const students = await response.json();
+                
+                // Populate dropdown
+                const select = document.getElementById('studentSelect');
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">-- Choose a registered student --</option>';
+                
+                students.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.student_id;
+                    option.textContent = `${student.first_name} ${student.last_name} (${student.roll_number})`;
+                    select.appendChild(option);
+                });
+                
+                // Show recent students
+                const recentStudents = students.slice(-5).reverse();
+                const listDiv = document.getElementById('studentsList');
+                
+                if (recentStudents.length === 0) {
+                    listDiv.innerHTML = '<p style="color: #999; font-size: 14px;">No students registered yet</p>';
+                } else {
+                    listDiv.innerHTML = recentStudents.map(s => `
+                        <div class="student-item">
+                            <div class="student-item-info">
+                                <div class="student-item-name">${s.first_name} ${s.last_name}</div>
+                                <div class="student-item-id">${s.roll_number}</div>
+                            </div>
+                            <span class="student-item-status status-${s.face_training_status}">
+                                ${s.face_training_status === 'trained' ? '✓ Trained' : '⏳ Pending'}
+                            </span>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading students:', error);
+            }
+        }
+        
+        // Reload students every 5 seconds
+        setInterval(loadStudents, 5000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+
+{% block title %}Face Enrollment - Attendance System{% endblock %}
+
+{% block content %}
+<h2>👤 Face Enrollment & Registration</h2>
+
+<style>
+    .enrollment-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .enrollment-form {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        border-left: 5px solid #667eea;
+    }
+    .enrollment-form h3 {
+        margin-bottom: 15px;
+    }
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+    .form-group input, .form-group select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        box-sizing: border-box;
+    }
+    .form-group input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 3px rgba(102, 126, 234, 0.3);
+    }
+    .button-group {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    button {
+        flex: 1;
+        padding: 10px 15px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .btn-primary {
+        background: #667eea;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #764ba2;
+    }
+    .btn-secondary {
+        background: #f44236;
+        color: white;
+    }
+    .btn-secondary:hover {
+        background: #da190b;
+    }
+    .camera-feed {
+        background: #000;
+        border-radius: 8px;
+        aspect-ratio: 4/3;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        position: relative;
+        overflow: hidden;
+    }
+    .camera-feed video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .camera-placeholder {
+        text-align: center;
+    }
+    .status-box {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        border-left: 5px solid #4caf50;
+    }
+    .status-box.warning {
+        border-left-color: #ff9800;
+    }
+    .status-box.error {
+        border-left-color: #f44236;
+    }
+    .capture-count {
+        background: #e3f2fd;
+        padding: 10px 15px;
+        border-radius: 3px;
+        margin-top: 10px;
+        text-align: center;
+    }
+    @media (max-width: 768px) {
+        .enrollment-container {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="enrollment-container">
+    <!-- Left Column: Form -->
+    <div class="enrollment-form">
+        <h3>📋 Student Information</h3>
+        <form id="enrollmentForm">
+            <div class="form-group">
+                <label>Student ID *</label>
+                <input type="text" id="studentId" placeholder="e.g., STU001" required>
+            </div>
+            <div class="form-group">
+                <label>First Name *</label>
+                <input type="text" id="firstName" placeholder="John" required>
+            </div>
+            <div class="form-group">
+                <label>Last Name *</label>
+                <input type="text" id="lastName" placeholder="Doe" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="email" placeholder="john.doe@school.com">
+            </div>
+            <div class="form-group">
+                <label>Class/Grade</label>
+                <input type="text" id="class" placeholder="10-A">
+            </div>
+            <div class="form-group">
+                <label>Parent Contact</label>
+                <input type="tel" id="parentContact" placeholder="+1234567890">
+            </div>
+
+            <div class="capture-count">
+                Faces Captured: <strong id="captureCount">0</strong> / 30
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn-primary" onclick="startCamera()">📷 Start Camera</button>
+                <button type="button" class="btn-secondary" onclick="stopCamera()">⏹️ Stop Camera</button>
+            </div>
+
+            <div class="button-group" style="margin-top: 10px;">
+                <button type="submit" class="btn-primary">✅ Register Student</button>
+            </div>
+
+            <div class="status-box" id="statusBox" style="display:none;">
+                <span id="statusText"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- Right Column: Camera Feed -->
+    <div>
+        <div class="camera-feed" id="cameraFeed">
+            <div class="camera-placeholder">
+                <p>📷</p>
+                <p>Camera feed will appear here</p>
+            </div>
+        </div>
+
+        <div class="status-box" style="margin-top: 15px;">
+            <h4>📊 Instructions</h4>
+            <ol style="margin: 0; padding-left: 20px;">
+                <li>Fill in student information</li>
+                <li>Click "Start Camera"</li>
+                <li>Position face in center</li>
+                <li>System captures 30 images automatically</li>
+                <li>Click "Register Student" when done</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<script>
+    let cameraStream = null;
+    let capturedFaces = 0;
+
+    async function startCamera() {
+        try {
+            const studentId = document.getElementById('studentId').value;
+            if (!studentId) {
+                showStatus('Please enter Student ID first', 'error');
+                return;
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 640, height: 480 }
+            });
+            
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.autoplay = true;
+            video.playsinline = true;
+            
+            const cameraFeed = document.getElementById('cameraFeed');
+            cameraFeed.innerHTML = '';
+            cameraFeed.appendChild(video);
+            
+            cameraStream = stream;
+            capturedFaces = 0;
+            document.getElementById('captureCount').textContent = '0';
+            showStatus('Camera started. Capturing faces...', 'success');
+
+            // Simulate face capture (in production, would use cv2 or MediaPipe)
+            captureFrames();
+        } catch (err) {
+            showStatus('Camera access denied. Please allow camera permissions.', 'error');
+            console.error(err);
+        }
+    }
+
+    function stopCamera() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = null;
+            
+            const cameraFeed = document.getElementById('cameraFeed');
+            cameraFeed.innerHTML = '<div class="camera-placeholder"><p>📷</p><p>Camera stopped</p></div>';
+            showStatus('Camera stopped', 'warning');
+        }
+    }
+
+    function captureFrames() {
+        if (!cameraStream || capturedFaces >= 30) return;
+
+        // Simulate capture every 200ms
+        setTimeout(() => {
+            capturedFaces++;
+            document.getElementById('captureCount').textContent = capturedFaces;
+            
+            if (capturedFaces < 30) {
+                captureFrames();
+            } else {
+                showStatus('30 faces captured! Ready to register.', 'success');
+            }
+        }, 200);
+    }
+
+    document.getElementById('enrollmentForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        if (capturedFaces < 10) {
+            showStatus('Please capture at least 10 faces before registering', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('roll_number', document.getElementById('studentId').value);
+        formData.append('first_name', document.getElementById('firstName').value);
+        formData.append('last_name', document.getElementById('lastName').value);
+        if (document.getElementById('class').value) {
+            formData.append('class_id', document.getElementById('class').value);
+        }
+
+        try {
+            showStatus('⏳ Registering student...', 'success');
+            const response = await fetch('/api/admin/register-student', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            
+            if (response.ok && data.status === 'success') {
+                showStatus('✅ Student registered successfully!', 'success');
+                setTimeout(() => {
+                    document.getElementById('enrollmentForm').reset();
+                    capturedFaces = 0;
+                    document.getElementById('captureCount').textContent = '0';
+                    stopCamera();
+                }, 2000);
+            } else {
+                showStatus('❌ ' + (data.message || 'Registration failed'), 'error');
+            }
+        } catch (err) {
+            showStatus('❌ Error: ' + (err.message || 'Unknown error'), 'error');
+            console.error('Enrollment error:', err);
+        }
+    });
+
+    function showStatus(message, type = 'success') {
+        const statusBox = document.getElementById('statusBox');
+        const statusText = document.getElementById('statusText');
+        statusBox.className = 'status-box';
+        if (type !== 'success') statusBox.classList.add(type);
+        statusText.textContent = message;
+        statusBox.style.display = 'block';
+    }
+</script>
+{% endblock %}

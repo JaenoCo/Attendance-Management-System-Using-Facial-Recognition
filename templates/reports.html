@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - Attendance System{% endblock %}
+
+{% block content %}
+<h2>📈 Reports</h2>
+
+<style>
+    .report-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        margin-bottom: 15px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    .report-card:hover {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .report-card h3 {
+        margin-bottom: 10px;
+    }
+    .report-card p {
+        font-size: 12px;
+        color: #666;
+    }
+</style>
+
+<div class="report-card" onclick="generateReport('daily')">
+    <h3>📅 Daily Report</h3>
+    <p>View attendance for a specific day</p>
+</div>
+
+<div class="report-card" onclick="generateReport('weekly')">
+    <h3>📊 Weekly Report</h3>
+    <p>View attendance for the current week</p>
+</div>
+
+<div class="report-card" onclick="generateReport('monthly')">
+    <h3>📆 Monthly Report</h3>
+    <p>View attendance for the current month</p>
+</div>
+
+<div class="report-card" onclick="generateReport('student')">
+    <h3>👤 Student Report</h3>
+    <p>View attendance for a specific student</p>
+</div>
+
+<script>
+    function generateReport(type) {
+        alert('Generating ' + type + ' report...');
+    }
+</script>
+{% endblock %}

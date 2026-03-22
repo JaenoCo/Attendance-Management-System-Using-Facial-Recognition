@@ -13,17 +13,33 @@ import os
 
 # construct the argument parser and parse the arguments
 ap = argparse.ArgumentParser()
-ap.add_argument("-i", "--dataset", required=True,
-	help="path to input directory of faces + images")
-ap.add_argument("-e", "--embeddings", required=True,
-	help="path to output serialized db of facial embeddings")
-ap.add_argument("-d", "--detector", required=True,
-	help="path to OpenCV's deep learning face detector")
-ap.add_argument("-m", "--embedding-model", required=True,
-	help="path to OpenCV's deep learning face embedding model")
+ap.add_argument("-i", "--dataset", default="dataset",
+	help="path to input directory of faces + images (default: dataset)")
+ap.add_argument("-e", "--embeddings", default="output/embeddings.pickle",
+	help="path to output serialized db of facial embeddings (default: output/embeddings.pickle)")
+ap.add_argument("-d", "--detector", default="Models",
+	help="path to OpenCV's deep learning face detector (default: Models)")
+ap.add_argument("-m", "--embedding-model", default="openface_nn4.small2.v1.t7",
+	help="path to OpenCV's deep learning face embedding model (default: openface_nn4.small2.v1.t7)")
 ap.add_argument("-c", "--confidence", type=float, default=0.5,
-	help="minimum probability to filter weak detections")
+	help="minimum probability to filter weak detections (default: 0.5)")
 args = vars(ap.parse_args())
+
+# Validate that dataset directory exists
+if not os.path.exists(args["dataset"]):
+	print(f"[ERROR] Dataset directory not found: {args['dataset']}")
+	print("[ERROR] Please create a 'dataset' folder with subdirectories for each student")
+	print("[INFO] Example structure:")
+	print("  dataset/")
+	print("    Student Name 1/")
+	print("      photo1.jpg")
+	print("      photo2.jpg")
+	print("    Student Name 2/")
+	print("      photo1.jpg")
+	exit(1)
+
+# Create output directory if it doesn't exist
+os.makedirs(os.path.dirname(args["embeddings"]) or ".", exist_ok=True)
 
 # load our serialized face detector from disk
 print("[INFO] loading face detector...")
@@ -116,3 +132,7 @@ data = {"embeddings": knownEmbeddings, "names": knownNames}
 f = open(args["embeddings"], "wb")
 f.write(pickle.dumps(data))
 f.close()
+
+print("[SUCCESS] Embeddings extraction complete!")
+print(f"[INFO] Saved {total} face embeddings to: {args['embeddings']}")
+print("[NEXT] Run: python training_model.py")

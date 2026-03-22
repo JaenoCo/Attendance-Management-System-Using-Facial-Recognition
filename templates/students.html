@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Students - Attendance System{% endblock %}
+
+{% block content %}
+<style>
+    .search-bar {
+        margin-bottom: 20px;
+    }
+    .search-bar input {
+        width: 300px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    th {
+        background: #f5f5f5;
+        font-weight: 600;
+    }
+    tr:hover {
+        background: #f9f9f9;
+    }
+</style>
+
+<h2>👥 Students Management</h2>
+
+<div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Search by name or ID..." onkeyup="searchStudents()">
+</div>
+
+<table id="studentsTable">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Roll Number</th>
+            <th>Name</th>
+            <th>Class</th>
+            <th>Training Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="studentsList">
+        <tr><td colspan="6" style="text-align: center;">Loading students...</td></tr>
+    </tbody>
+</table>
+
+<script>
+    async function loadStudents() {
+        try {
+            const response = await fetch('/api/students');
+            const students = await response.json();
+            
+            const tbody = document.getElementById('studentsList');
+            if (students.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = students.map(s => `
+                <tr>
+                    <td>${s.student_id}</td>
+                    <td>${s.roll_number}</td>
+                    <td>${s.first_name} ${s.last_name}</td>
+                    <td>${s.class_name || '-'}</td>
+                    <td><span style="background: ${s.face_training_status === 'trained' ? '#d4edda' : '#ffeaa7'}; padding: 4px 8px; border-radius: 3px;">
+                        ${s.face_training_status === 'trained' ? '✓ Trained' : '⏳ Pending'}
+                    </span></td>
+                    <td>
+                        <a href="#" onclick="editStudent(${s.student_id})">Edit</a> | 
+                        <a href="#" onclick="deleteStudent(${s.student_id})">Delete</a>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading students:', error);
+        }
+    }
+    
+    function searchStudents() {
+        const filter = document.getElementById('searchInput').value.toLowerCase();
+        const rows = document.querySelectorAll('#studentsList tr');
+        rows.forEach(row => {
+            row.style.display = row.textContent.toLowerCase().includes(filter) ? '' : 'none';
+        });
+    }
+    
+    function editStudent(id) {
+        alert('Edit student: ' + id);
+    }
+    
+    function deleteStudent(id) {
+        if (confirm('Are you sure?')) {
+            alert('Delete student: ' + id);
+        }
+    }
+    
+    loadStudents();
+    setInterval(loadStudents, 30000);
+</script>
+{% endblock %}

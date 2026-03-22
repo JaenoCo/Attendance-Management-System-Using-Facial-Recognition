@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Check-in - Facial Recognition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 700px;
+            width: 100%;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .input-group {
+            position: relative;
+            display: flex;
+        }
+        
+        #studentId {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        #studentId:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.1);
+        }
+        
+        .submit-btn {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .video-container {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        
+        .video-container.active {
+            display: block;
+        }
+        
+        #videoFeed {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+            margin-bottom: 15px;
+            height: auto;
+        }
+        
+        .video-info {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .video-info span {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .welcome-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        .welcome-overlay.show {
+            display: flex;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .welcome-message {
+            text-align: center;
+            padding: 60px 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.5s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .welcome-message h1 {
+            font-size: 48px;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .welcome-message p {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .welcome-message.success h1::before {
+            content: "✓ ";
+            color: #28a745;
+        }
+        
+        .timer-text {
+            font-size: 18px;
+            color: #999;
+            margin-top: 15px;
+        }
+        
+        .message {
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            text-align: center;
+            font-size: 16px;
+        }
+        
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 2px solid #bee5eb;
+            display: block;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+            display: block;
+            border-left: 5px solid #28a745;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+            display: block;
+            border-left: 5px solid #dc3545;
+        }
+        
+        .message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffeeba;
+            display: block;
+            border-left: 5px solid #ffc107;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .student-info {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+            border-left: 4px solid #667eea;
+        }
+        
+        .student-info h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .info-value {
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .time-display {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: center;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .instructions {
+            background: #e7f3ff;
+            color: #004085;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #0066cc;
+            font-size: 14px;
+        }
+        
+        .recognition-status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .recognition-status.detecting {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+            border: 1px solid #ffeeba;
+        }
+        
+        .recognition-status.recognized {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+            border: 1px solid #c3e6cb;
+        }
+        
+        @media (max-width: 600px) {
+            .header {
+                padding: 30px 20px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+            
+            .welcome-message {
+                padding: 40px 20px;
+            }
+            
+            .welcome-message h1 {
+                font-size: 36px;
+            }
+            
+            .welcome-message p {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>🎓 Attendance Check-In</h1>
+                <p>Facial Recognition System</p>
+            </div>
+            
+            <div class="content">
+                <div class="instructions">
+                    📖 <strong>Instructions:</strong> Click "Start Face Recognition" to begin. The camera will open and scan your face automatically.
+                </div>
+                
+                <div id="message"></div>
+                
+                <form id="checkinForm">
+                    <div class="form-group">
+                        <label for="studentId">Enter Student ID / Roll Number (Optional)</label>
+                        <div class="input-group">
+                            <input type="text" id="studentId" name="studentId" 
+                                   placeholder="e.g., STU-001"
+                                   autocomplete="off">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        📹 Start Face Recognition
+                    </button>
+                </form>
+                
+                <!-- Video Feed Container -->
+                <div id="videoContainer" class="video-container">
+                    <div class="video-info">
+                        <p>Camera is scanning your face...</p>
+                        <p>Please look at the camera for <span id="detectionTimer">5</span> seconds</p>
+                    </div>
+                    <video id="videoFeed" autoplay playsinline muted></video>
+                    <canvas id="canvas" style="display:none;"></canvas>
+                    <div class="recognition-status" id="recognitionStatus"></div>
+                </div>
+                
+                <div id="studentInfo"></div>
+            </div>
+            
+            <div style="text-align: center; padding: 20px; background: #f5f5f5; color: #666; font-size: 12px;">
+                Current Time: <span class="time-display" style="font-size: 18px; margin: 0;">--:--:--</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="welcomeOverlay" class="welcome-overlay">
+        <div class="welcome-message">
+            <h1>Welcome</h1>
+            <p id="welcomeStudentName">Student Name</p>
+            <div class="timer-text">Marking attendance... <span id="countdownTimer">5</span>s</div>
+        </div>
+    </div>
+
+    <script>
+        let videoStream = null;
+        let recognizedStudent = null;
+        let recognitionInProgress = false;
+        
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            const timeDisplay = document.querySelector('.time-display');
+            if (timeDisplay) {
+                timeDisplay.textContent = now.toLocaleTimeString('en-PK');
+            }
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // Handle form submission
+        document.getElementById('checkinForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await startFaceRecognition();
+        });
+        
+        async function startFaceRecognition() {
+            const submitBtn = document.getElementById('submitBtn');
+            const videoContainer = document.getElementById('videoContainer');
+            const messageDiv = document.getElementById('message');
+            
+            submitBtn.disabled = true;
+            videoContainer.classList.add('active');
+            
+            try {
+                // Request camera access
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 },
+                    audio: false
+                });
+                
+                videoStream = stream;
+                const video = document.getElementById('videoFeed');
+                video.srcObject = stream;
+                
+                // Wait for video to be ready
+                await new Promise(resolve => {
+                    video.onloadedmetadata = resolve;
+                });
+                
+                // Start face recognition
+                startFaceDetectionLoop();
+                
+            } catch (error) {
+                if (error.name === 'NotAllowedError') {
+                    showMessage('❌ Camera access denied. Please allow camera permissions.', 'error');
+                } else if (error.name === 'NotFoundError') {
+                    showMessage('❌ No camera found. Please connect a camera.', 'error');
+                } else {
+                    showMessage('❌ Error accessing camera: ' + error.message, 'error');
+                }
+                submitBtn.disabled = false;
+                videoContainer.classList.remove('active');
+            }
+        }
+        
+        function startFaceDetectionLoop() {
+            const video = document.getElementById('videoFeed');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const recognitionStatus = document.getElementById('recognitionStatus');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const detectionTimer = 5; // seconds
+            let detectionCount = 0;
+            const detectionInterval = setInterval(async () => {
+                if (!videoStream) {
+                    clearInterval(detectionInterval);
+                    return;
+                }
+                
+                // Capture frame from video
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg');
+                
+                detectionCount++;
+                document.getElementById('detectionTimer').textContent = Math.max(0, detectionTimer - detectionCount);
+                
+                if (detectionCount <= 5) {
+                    recognitionStatus.className = 'recognition-status detecting';
+                    recognitionStatus.textContent = '🔍 Scanning face... (' + detectionCount + '/5)';
+                    
+                    // Try to recognize face
+                    if (detectionCount % 2 === 0) { // Every 2 frames to reduce server load
+                        await recognizeFace(imageData);
+                    }
+                } else {
+                    clearInterval(detectionInterval);
+                    recognitionStatus.className = 'recognition-status';
+                    recognitionStatus.style.display = 'none';
+                    
+                    // If no face was recognized, show error
+                    if (!recognizedStudent) {
+                        showMessage('⚠️ Face not recognized. Please try again.', 'error');
+                        resetRecognition();
+                    }
+                }
+            }, 500); // Capture every 500ms
+        }
+        
+        async function recognizeFace(imageData) {
+            if (recognizedStudent || recognitionInProgress) return;
+            
+            recognitionInProgress = true;
+            
+            try {
+                const response = await fetch('/api/attendance/recognize-face', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.student) {
+                    recognizedStudent = data.student;
+                    handleFaceRecognized(data.student);
+                }
+            } catch (error) {
+                console.error('Face recognition error:', error);
+            }
+            
+            recognitionInProgress = false;
+        }
+        
+        async function handleFaceRecognized(student) {
+            // Stop video
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            const videoContainer = document.getElementById('videoContainer');
+            videoContainer.classList.remove('active');
+            
+            // Show welcome overlay
+            const welcomeOverlay = document.getElementById('welcomeOverlay');
+            const welcomeName = document.getElementById('welcomeStudentName');
+            welcomeName.textContent = student.name;
+            
+            welcomeOverlay.classList.add('show');
+            
+            // Update countdown
+            let countdown = 5;
+            const countdownElement = document.getElementById('countdownTimer');
+            
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                countdownElement.textContent = countdown;
+                
+                if (countdown === 0) {
+                    clearInterval(countdownInterval);
+                    
+                    // Mark attendance after 5 seconds
+                    markAttendance(student.id);
+                    welcomeOverlay.classList.remove('show');
+                }
+            }, 1000);
+        }
+        
+        async function markAttendance(studentId) {
+            const messageDiv = document.getElementById('message');
+            
+            try {
+                const formData = new FormData();
+                formData.append('student_id', studentId);
+                
+                const response = await fetch('/api/attendance/checkin', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    messageDiv.className = 'message success';
+                    messageDiv.innerHTML = `
+                        <h3>✅ Attendance Marked!</h3>
+                        <div class="student-info" style="display: block; margin-top: 15px;">
+                            <h2>${data.student.name}</h2>
+                            <div class="info-row">
+                                <span class="info-label">Roll Number:</span>
+                                <span class="info-value">${data.student.roll_number}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Check-In Time:</span>
+                                <span class="info-value">${new Date().toLocaleTimeString('en-PK')}</span>
+                            </div>
+                        </div>
+                    `;
+                    messageDiv.style.display = 'block';
+                    
+                    // Reset form after 3 seconds
+                    setTimeout(() => {
+                        resetRecognition();
+                    }, 3000);
+                } else {
+                    showMessage('❌ ' + (data.message || 'Failed to mark attendance'), 'error');
+                    resetRecognition();
+                }
+            } catch (error) {
+                showMessage('❌ Error: ' + error.message, 'error');
+                resetRecognition();
+            }
+        }
+        
+        function resetRecognition() {
+            document.getElementById('checkinForm').reset();
+            document.getElementById('videoContainer').classList.remove('active');
+            document.getElementById('studentInfo').innerHTML = '';
+            document.getElementById('submitBtn').disabled = false;
+            recognizedStudent = null;
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+        }
+        
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = message;
+            messageDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Attendance System{% endblock %}
+
+{% block content %}
+<h2>⚙️ Settings</h2>
+
+<style>
+    .settings-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+    }
+    .settings-section h3 {
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #667eea;
+    }
+    .setting-item {
+        margin-bottom: 15px;
+    }
+    .setting-item label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+    .setting-item input, .setting-item select {
+        width: 100%;
+        max-width: 300px;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    button {
+        background: #667eea;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        margin-top: 10px;
+    }
+    button:hover {
+        background: #764ba2;
+    }
+</style>
+
+<div class="settings-section">
+    <h3>School Information</h3>
+    <div class="setting-item">
+        <label>School Name</label>
+        <input type="text" value="Your School Name">
+    </div>
+    <div class="setting-item">
+        <label>School Start Time</label>
+        <input type="time">
+    </div>
+    <div class="setting-item">
+        <label>School End Time</label>
+        <input type="time">
+    </div>
+    <button onclick="saveSettings()">Save Changes</button>
+</div>
+
+<div class="settings-section">
+    <h3>Face Recognition Settings</h3>
+    <div class="setting-item">
+        <label>Confidence Threshold</label>
+        <input type="number" min="0" max="100" value="50">
+    </div>
+    <div class="setting-item">
+        <label>Training Time (Hour)</label>
+        <input type="number" min="0" max="23" value="23">
+    </div>
+    <button onclick="saveSettings()">Save Changes</button>
+</div>
+
+<div class="settings-section">
+    <h3>System Status</h3>
+    <p>Database: <strong>Connected</strong></p>
+    <p>Face Models: <strong>Loaded</strong></p>
+    <p>Scheduler: <strong>Running</strong></p>
+</div>
+
+<script>
+    function saveSettings() {
+        alert('Settings saved successfully!');
+    }
+</script>
+{% endblock %}

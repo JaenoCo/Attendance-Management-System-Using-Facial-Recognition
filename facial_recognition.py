@@ -1,0 +1,201 @@
+"""
+Facial Recognition Module
+Handles face detection, embedding extraction, and face recognition
+"""
+
+import cv2
+import numpy as np
+import pickle
+import os
+from config import FACE_DETECTOR_PATH, FACE_EMBEDDING_MODEL, RECOGNIZER_MODEL, LABEL_ENCODER
+
+class FacialRecognitionSystem:
+    """Manage facial recognition operations"""
+    
+    def __init__(self):
+        self.detector = None
+        self.embedder = None
+        self.recognizer = None
+        self.le = None
+        self._load_models()
+    
+    def _load_models(self):
+        """Load face detector and embedder models"""
+        try:
+            # Load face detector
+            proto_path = os.path.join(FACE_DETECTOR_PATH, "deploy.prototxt")
+            model_path = os.path.join(FACE_DETECTOR_PATH, "res10_300x300_ssd_iter_140000.caffemodel")
+            
+            if os.path.exists(proto_path) and os.path.exists(model_path):
+                self.detector = cv2.dnn.readNetFromCaffe(proto_path, model_path)
+                print("[INFO] Face detector loaded successfully")
+            else:
+                print("[WARN] Face detector models not found")
+            
+            # Load face embedder
+            if os.path.exists(FACE_EMBEDDING_MODEL):
+                self.embedder = cv2.dnn.readNetFromTorch(FACE_EMBEDDING_MODEL)
+                print("[INFO] Face embedder loaded successfully")
+            else:
+                print("[WARN] Face embedder model not found")
+            
+            # Load recognizer and label encoder
+            if os.path.exists(RECOGNIZER_MODEL) and os.path.exists(LABEL_ENCODER):
+                self.recognizer = pickle.loads(open(RECOGNIZER_MODEL, 'rb').read())
+                self.le = pickle.loads(open(LABEL_ENCODER, 'rb').read())
+                print("[INFO] Recognizer and label encoder loaded successfully")
+            else:
+                print("[WARN] Recognizer or label encoder not found")
+        
+        except Exception as e:
+            print(f"[ERROR] Error loading models: {e}")
+    
+    def detect_faces(self, frame):
+        """Detect faces in a frame"""
+        if self.detector is None:
+            return []
+        
+        try:
+            (h, w) = frame.shape[:2]
+            blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0, (300, 300), 
+                                        (104.0, 177.0, 123.0), swapRB=False, crop=False)
+            self.detector.setInput(blob)
+            detections = self.detector.forward()
+            
+            faces = []
+            for i in range(0, detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > 0.5:
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    (startX, startY, endX, endY) = box.astype("int")
+                    faces.append({
+                        'box': (startX, startY, endX, endY),
+                        'confidence': confidence
+                    })
+            
+            return faces
+        except Exception as e:
+            print(f"[ERROR] Error detecting faces: {e}")
+            return []
+    
+    def get_face_embedding(self, face):
+        """Extract embedding from a face ROI"""
+        if self.embedder is None:
+            return None
+        
+        try:
+            blob = cv2.dnn.blobFromImage(face, 1.0/255, (96, 96), (0, 0, 0), 
+                                        swapRB=True, crop=False)
+            self.embedder.setInput(blob)
+            vec = self.embedder.forward()
+            return vec
+        except Exception as e:
+            print(f"[ERROR] Error extracting embedding: {e}")
+            return None
+    
+    def recognize_face(self, embedding):
+        """Recognize a face from its embedding"""
+        if self.recognizer is None or self.le is None:
+            return None, 0
+        
+        try:
+            pred = self.recognizer.predict_proba(embedding)
+            j = np.argmax(pred)
+            proba = pred[0][j]
+            name = self.le.classes_[j]
+            return name, proba
+        except Exception as e:
+            print(f"[ERROR] Error recognizing face: {e}")
+            return None, 0
+    
+    def process_frame(self, frame):
+        """Process a frame and return recognized faces"""
+        faces_data = []
+        
+        try:
+            detections = self.detect_faces(frame)
+            
+            for face_info in detections:
+                box = face_info['box']
+                startX, startY, endX, endY = box
+                
+                # Extract face ROI
+                face = frame[startY:endY, startX:endX]
+                if face.shape[0] < 20 or face.shape[1] < 20:
+                    continue
+                
+                # Get embedding
+                embedding = self.get_face_embedding(face)
+                if embedding is None:
+                    continue
+                
+                # Recognize face
+                name, confidence = self.recognize_face(embedding)
+                
+                faces_data.append({
+                    'box': box,
+                    'name': name,
+                    'confidence': confidence,
+                    'embedding': embedding
+                })
+            
+            return faces_data
+        except Exception as e:
+            print(f"[ERROR] Error processing frame: {e}")
+            return []
+    
+    def capture_face_from_image(self, image_array, student_id=None, student_name=None):
+        """Capture and extract embeddings from an image"""
+        try:
+            # Detect faces in image
+            faces = self.process_frame(image_array)
+            
+            if not faces:
+                return {
+                    'status': 'error',
+                    'message': 'No face detected in image'
+                }
+            
+            # Return the best match
+            best_face = max(faces, key=lambda x: x['confidence'])
+            
+            return {
+                'status': 'success',
+                'embedding': best_face['embedding'].tolist() if isinstance(best_face['embedding'], np.ndarray) else best_face['embedding'],
+                'confidence': float(best_face['confidence']),
+                'box': best_face['box']
+            }
+        except Exception as e:
+            print(f"[ERROR] Error capturing face: {e}")
+            return {
+                'status': 'error',
+                'message': f'Face capture error: {str(e)}'
+            }
+    
+    def train_recognizer(self):
+        """Train the face recognizer model
+        
+        Note: This is a placeholder. Actual training should be done by auto_train.py
+        """
+        try:
+            if self.recognizer is None or self.le is None:
+                return {
+                    'status': 'error',
+                    'message': 'Recognizer not initialized. Run training_model.py first.'
+                }
+            
+            return {
+                'status': 'success',
+                'message': 'Recognizer is ready. Use auto_train.py to retrain with new faces.'
+            }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'Trainer error: {str(e)}'
+            }
+
+
+# Factory function to get facial recognition system
+def get_facial_recognition_system():
+    """Get or create facial recognition system instance"""
+    return FacialRecognitionSystem()
