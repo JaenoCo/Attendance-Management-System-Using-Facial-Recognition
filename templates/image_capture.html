@@ -162,9 +162,127 @@
             border: 1px solid #bee5eb;
         }
 
+        /* Popup Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        .modal-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .modal-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .modal-message {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .modal-count {
+            font-size: 16px;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f0f3ff;
+            border-radius: 6px;
+        }
+
+        .modal-close-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .modal-close-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .modal-success {
+            border-left: 4px solid #28a745;
+        }
+
+        .modal-success .modal-icon {
+            color: #28a745;
+        }
+
+        .modal-success .modal-title {
+            color: #28a745;
+        }
+
+        .modal-error {
+            border-left: 4px solid #dc3545;
+        }
+
+        .modal-error .modal-icon {
+            color: #dc3545;
+        }
+
+        .modal-error .modal-title {
+            color: #dc3545;
+        }
+
         @media (max-width: 768px) {
             .capture-layout {
                 grid-template-columns: 1fr;
+            }
+            
+            .modal-content {
+                max-width: 85%;
+                padding: 20px;
             }
         }
     </style>
@@ -199,6 +317,17 @@
         </div>
 
         <div id="messageBox" class="message"></div>
+    </div>
+
+    <!-- Capture Notification Modal -->
+    <div id="captureModal" class="modal">
+        <div class="modal-content" id="modalContent">
+            <div class="modal-icon" id="modalIcon">📸</div>
+            <div class="modal-title" id="modalTitle">Image Captured</div>
+            <div class="modal-message" id="modalMessage">Your face has been captured successfully!</div>
+            <div class="modal-count" id="modalCount">Total Captured: <strong>0</strong></div>
+            <button class="modal-close-btn" onclick="closeModal()">Close</button>
+        </div>
     </div>
 
     <script>
@@ -412,14 +541,17 @@
                     document.getElementById('captureCount').textContent = String(captureCount);
                     drawDetectionBox(data.box, data.confidence);
                     showMessage('Image captured successfully.', 'success');
+                    showCaptureModal(true, 'Face detected and captured!', captureCount);
                 } else {
                     if (Array.isArray(data.box) && data.box.length === 4) {
                         drawDetectionBox(data.box, data.confidence || 0);
                     }
                     showMessage(data.message || 'Capture failed.', 'error');
+                    showCaptureModal(false, data.message || 'Failed to capture. No face detected.');
                 }
             } catch (error) {
                 showMessage('Capture error: ' + error.message, 'error');
+                showCaptureModal(false, 'Capture error: ' + error.message);
             } finally {
                 isCapturing = false;
                 const captureBtn = document.getElementById('captureBtn');
@@ -452,6 +584,50 @@
             box.className = 'message ' + type;
             box.textContent = message;
         }
+
+        function showCaptureModal(success = true, message = '', count = 0) {
+            const modal = document.getElementById('captureModal');
+            const modalContent = document.getElementById('modalContent');
+            const modalIcon = document.getElementById('modalIcon');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalMessage = document.getElementById('modalMessage');
+            const modalCount = document.getElementById('modalCount');
+
+            if (success) {
+                modalContent.className = 'modal-content modal-success';
+                modalIcon.textContent = '✅';
+                modalTitle.textContent = 'Captured Successfully!';
+                modalMessage.textContent = message || 'Your face has been captured successfully!';
+                modalCount.innerHTML = `Total Captured: <strong>${count}</strong>`;
+            } else {
+                modalContent.className = 'modal-content modal-error';
+                modalIcon.textContent = '❌';
+                modalTitle.textContent = 'Capture Failed';
+                modalMessage.textContent = message || 'Failed to capture image. Please try again.';
+                modalCount.style.display = 'none';
+            }
+
+            modal.classList.add('show');
+
+            // Auto-close after 2.5 seconds
+            setTimeout(closeModal, 2500);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('captureModal');
+            modal.classList.remove('show');
+            document.getElementById('modalCount').style.display = 'block';
+        }
+
+        // Close modal when clicking outside of it
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('captureModal');
+            window.addEventListener('click', (event) => {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+        });
     </script>
 </body>
 </html>
