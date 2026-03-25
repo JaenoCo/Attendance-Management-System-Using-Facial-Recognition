@@ -27,6 +27,8 @@ import json
 import subprocess
 import sys
 import atexit
+import socket
+import re
 
 # Initialize FastAPI app
 app = FastAPI(title="School Attendance System", version="2.0")
@@ -152,6 +154,15 @@ def get_current_user(request: Request):
         return session["username"]
     return None
 
+def _normalize_identity_value(value):
+    """Normalize predicted labels and student identity strings for matching."""
+    if value is None:
+        return ''
+    text = str(value).strip().lower()
+    text = text.replace('-', ' ').replace('_', ' ')
+    text = re.sub(r'\s+', ' ', text)
+    return text
+
 def ensure_connection():
     """Ensure database connection is active"""
     max_retries = 3
@@ -274,7 +285,7 @@ async def get_dashboard_stats():
         }
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -318,7 +329,7 @@ async def get_students():
         return students
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -330,12 +341,12 @@ async def get_student(student_id: int):
         
         student = db.get_student_by_id(student_id)
         if not student:
-            return {'error': 'Student not found'}, 404
+            return JSONResponse({'error': 'Student not found'}, status_code=404)
         
         return student
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
 
 # ==================== Attendance Routes ====================
 
@@ -379,7 +390,7 @@ async def get_today_attendance():
         return attendance
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -406,7 +417,7 @@ async def get_class_attendance(class_id: int, date_param: str = Query(None)):
         return attendance
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -434,7 +445,7 @@ async def get_student_attendance_report(
     """Get student attendance report"""
     try:
         if not student_id:
-            return {'error': 'student_id required'}, 400
+            return JSONResponse({'error': 'student_id required'}, status_code=400)
         
         start = datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None
         end = datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else None
@@ -467,7 +478,7 @@ async def get_student_attendance_report(
         }
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': str(e)}, 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 @app.get("/api/reports/export-csv")
 async def export_attendance_csv(
@@ -498,7 +509,7 @@ async def export_attendance_csv(
         )
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': str(e)}, 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 @app.get("/api/reports/monthly-stats")
 async def get_monthly_stats(
@@ -537,7 +548,7 @@ async def get_monthly_stats(
         return stats
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -556,7 +567,7 @@ async def get_teachers():
         return teachers
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -581,7 +592,7 @@ async def get_classes():
         return classes
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Database error: {str(e)}'}, 500
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -650,7 +661,7 @@ async def delete_student(request: Request, student_id: int):
     """Delete a student"""
     current_user = get_current_user(request)
     if not current_user:
-        return {'error': 'Unauthorized'}, 401
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     
     cursor = None
     try:
@@ -659,7 +670,7 @@ async def delete_student(request: Request, student_id: int):
         # Check if student exists
         cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
         if not cursor.fetchone():
-            return {'error': 'Student not found'}, 404
+            return JSONResponse({'error': 'Student not found'}, status_code=404)
         
         # Delete attendance records first (foreign key constraint)
         cursor.execute("DELETE FROM attendance_scans WHERE student_id = %s", (student_id,))
@@ -673,7 +684,7 @@ async def delete_student(request: Request, student_id: int):
     except Exception as e:
         db.connection.rollback()
         print(f"[ERROR] {type(e).__name__}: {e}")
-        return {'error': f'Failed to delete student: {str(e)}'}, 400
+        return JSONResponse({'error': f'Failed to delete student: {str(e)}'}, status_code=400)
     finally:
         if cursor:
             cursor.close()
@@ -707,7 +718,7 @@ async def face_enrollment_page(request: Request):
     })
 
 @app.post("/api/face/capture")
-async def capture_face(request: Request, student_id: int = Form(...), image_data: str = Form(...)):
+async def capture_face_webcam(request: Request, student_id: int = Form(...), image_data: str = Form(...)):
     """
     Capture and process face image from webcam
     Args:
@@ -718,17 +729,21 @@ async def capture_face(request: Request, student_id: int = Form(...), image_data
     """
     current_user = get_current_user(request)
     if not current_user:
-        return {'error': 'Unauthorized'}, 401
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     
     try:
         # Get student info
         cursor = db.connection.cursor(dictionary=True)
-        cursor.execute("SELECT student_id, name FROM students WHERE student_id = %s", (student_id,))
+        cursor.execute("""
+            SELECT student_id, CONCAT(first_name, ' ', last_name) AS name
+            FROM students
+            WHERE student_id = %s
+        """, (student_id,))
         student = cursor.fetchone()
         cursor.close()
         
         if not student:
-            return {'status': 'error', 'message': 'Student not found'}, 404
+            return JSONResponse({'status': 'error', 'message': 'Student not found'}, status_code=404)
         
         # Decode base64 image
         image_data_clean = image_data.split(',')[1] if ',' in image_data else image_data
@@ -768,7 +783,56 @@ async def capture_face(request: Request, student_id: int = Form(...), image_data
         return result
     
     except Exception as e:
-        return {'status': 'error', 'message': f'Error: {str(e)}'}
+        return JSONResponse({'status': 'error', 'message': f'Error: {str(e)}'}, status_code=500)
+
+
+@app.post("/api/face/detect")
+async def detect_faces_endpoint(request: Request):
+    """Detect faces from image data for enrollment preview (no identity recognition)."""
+    try:
+        body = await request.json()
+        image_data = body.get('image', '')
+
+        if not image_data:
+            return JSONResponse({'status': 'error', 'message': 'No image provided'}, status_code=400)
+
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return JSONResponse({'status': 'error', 'message': 'Invalid image format'}, status_code=400)
+
+        fr_system = get_facial_recognition_system()
+        raw_detections = fr_system.detect_faces(frame)
+
+        frame_h, frame_w = frame.shape[:2]
+        faces_payload = []
+        for detection in raw_detections:
+            box = detection.get('box') or ()
+            if len(box) != 4:
+                continue
+
+            start_x = max(0, min(int(box[0]), frame_w - 1))
+            start_y = max(0, min(int(box[1]), frame_h - 1))
+            end_x = max(0, min(int(box[2]), frame_w - 1))
+            end_y = max(0, min(int(box[3]), frame_h - 1))
+
+            faces_payload.append({
+                'box': [start_x, start_y, end_x, end_y],
+                'confidence': float(detection.get('confidence', 0.0))
+            })
+
+        return JSONResponse({
+            'status': 'success',
+            'detected': len(faces_payload) > 0,
+            'faces': faces_payload
+        })
+    except Exception as e:
+        return JSONResponse({'status': 'error', 'message': f'Detection error: {str(e)}'}, status_code=500)
 
 @app.post("/api/face/add-manual")
 async def add_face_manual(
@@ -781,17 +845,21 @@ async def add_face_manual(
     """
     current_user = get_current_user(request)
     if not current_user:
-        return {'error': 'Unauthorized'}, 401
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     
     try:
         # Get student info
         cursor = db.connection.cursor(dictionary=True)
-        cursor.execute("SELECT student_id, name FROM students WHERE student_id = %s", (student_id,))
+        cursor.execute("""
+            SELECT student_id, CONCAT(first_name, ' ', last_name) AS name
+            FROM students
+            WHERE student_id = %s
+        """, (student_id,))
         student = cursor.fetchone()
         cursor.close()
         
         if not student:
-            return {'status': 'error', 'message': 'Student not found'}, 404
+            return JSONResponse({'status': 'error', 'message': 'Student not found'}, status_code=404)
         
         # Read uploaded file
         contents = await face_image.read()
@@ -829,7 +897,7 @@ async def add_face_manual(
         return result
     
     except Exception as e:
-        return {'status': 'error', 'message': f'Error: {str(e)}'}
+        return JSONResponse({'status': 'error', 'message': f'Error: {str(e)}'}, status_code=500)
 
 @app.post("/api/face/train")
 async def train_facial_model(request: Request):
@@ -839,7 +907,7 @@ async def train_facial_model(request: Request):
     """
     current_user = get_current_user(request)
     if not current_user:
-        return {'error': 'Unauthorized'}, 401
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     
     try:
         fr_system = get_facial_recognition_system()
@@ -847,7 +915,7 @@ async def train_facial_model(request: Request):
         return result
     
     except Exception as e:
-        return {'status': 'error', 'message': f'Training failed: {str(e)}'}
+        return JSONResponse({'status': 'error', 'message': f'Training failed: {str(e)}'}, status_code=500)
 
 @app.get("/api/face/status")
 async def get_face_enrollment_status(request: Request, student_id: int = Query(...)):
@@ -856,12 +924,15 @@ async def get_face_enrollment_status(request: Request, student_id: int = Query(.
     """
     current_user = get_current_user(request)
     if not current_user:
-        return {'error': 'Unauthorized'}, 401
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     
     try:
         cursor = db.connection.cursor(dictionary=True)
         cursor.execute("""
-            SELECT student_id, name, face_registered, face_data
+            SELECT student_id,
+                   CONCAT(first_name, ' ', last_name) AS name,
+                   face_registered,
+                   face_data
             FROM students
             WHERE student_id = %s
         """, (student_id,))
@@ -869,7 +940,7 @@ async def get_face_enrollment_status(request: Request, student_id: int = Query(.
         cursor.close()
         
         if not student:
-            return {'status': 'error', 'message': 'Student not found'}, 404
+            return JSONResponse({'status': 'error', 'message': 'Student not found'}, status_code=404)
         
         return {
             'status': 'success',
@@ -880,7 +951,7 @@ async def get_face_enrollment_status(request: Request, student_id: int = Query(.
         }
     
     except Exception as e:
-        return {'status': 'error', 'message': f'Error: {str(e)}'}
+        return JSONResponse({'status': 'error', 'message': f'Error: {str(e)}'}, status_code=500)
 
 @app.get("/api/face/stats")
 async def get_face_enrollment_stats(request: Request):
@@ -889,7 +960,7 @@ async def get_face_enrollment_stats(request: Request):
     """
     current_user = get_current_user(request)
     if not current_user:
-        return {'error': 'Unauthorized'}, 401
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
     
     try:
         cursor = db.connection.cursor(dictionary=True)
@@ -913,7 +984,7 @@ async def get_face_enrollment_stats(request: Request):
         }
     
     except Exception as e:
-        return {'status': 'error', 'message': f'Error: {str(e)}'}
+        return JSONResponse({'status': 'error', 'message': f'Error: {str(e)}'}, status_code=500)
 
 # ==================== Error Handlers ====================
 
@@ -924,7 +995,7 @@ async def health_check():
         
         return {'status': 'healthy', 'database': 'connected'}
     except Exception as e:
-        return {'status': 'unhealthy', 'error': str(e)}, 500
+        return JSONResponse({'status': 'unhealthy', 'error': str(e)}, status_code=500)
 
 # ==================== Admin Registration Routes ====================
 
@@ -939,6 +1010,35 @@ async def admin_register_student_page(request: Request):
         "request": request,
         "username": current_user
     })
+
+@app.get("/admin/capture-images/{student_id}")
+async def admin_capture_images_page(request: Request, student_id: int):
+    """Dedicated image capture page for a registered student"""
+    current_user = get_current_user(request)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    cursor = None
+    try:
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT student_id, roll_number, first_name, last_name
+            FROM students
+            WHERE student_id = %s
+        """, (student_id,))
+        student = cursor.fetchone()
+
+        if not student:
+            return RedirectResponse(url="/admin/register-student", status_code=302)
+
+        return templates.TemplateResponse("image_capture.html", {
+            "request": request,
+            "username": current_user,
+            "student": student
+        })
+    finally:
+        if cursor:
+            cursor.close()
 
 @app.post("/api/admin/register-student")
 async def register_student(
@@ -959,6 +1059,15 @@ async def register_student(
                 {'status': 'error', 'message': 'Student with this ID already exists'},
                 status_code=400
             )
+
+        # Validate class_id if provided
+        if class_id is not None:
+            cursor.execute("SELECT class_id FROM classes WHERE class_id = %s", (class_id,))
+            if not cursor.fetchone():
+                return JSONResponse(
+                    {'status': 'error', 'message': 'Invalid class selected. Please choose a valid class.'},
+                    status_code=400
+                )
         
         # Insert new student
         query = """
@@ -987,7 +1096,7 @@ async def register_student(
             cursor.close()
 
 @app.post("/api/admin/capture-face")
-async def capture_face(student_id: int = Form(...)):
+async def capture_face_admin(student_id: int = Form(...)):
     """Trigger face capture for a student"""
     cursor = None
     try:
@@ -1058,19 +1167,19 @@ async def train_now_endpoint():
                 'output': result.stdout[-500:]  # Last 500 chars
             }
         else:
-            return {
+            return JSONResponse({
                 'status': 'error',
                 'message': 'Training failed',
                 'output': result.stderr[-500:]
-            }, 500
+            }, status_code=500)
             
     except subprocess.TimeoutExpired:
-        return {
+        return JSONResponse({
             'status': 'error',
             'message': 'Training timed out'
-        }, 500
+        }, status_code=500)
     except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
+        return JSONResponse({'status': 'error', 'message': str(e)}, status_code=500)
 
 # ==================== Attendance Check-In Routes ====================
 
@@ -1173,8 +1282,10 @@ async def get_checkin_status(student_id: str):
         
         today = date.today()
         cursor.execute("""
-            SELECT * FROM attendance_logs 
-            WHERE (student_id = %s OR roll_number = %s) AND date = %s
+            SELECT al.*
+            FROM attendance_logs al
+            INNER JOIN students s ON s.student_id = al.student_id
+            WHERE (s.student_id = %s OR s.roll_number = %s) AND al.date = %s
         """, (student_id if student_id.isdigit() else None, student_id, today))
         
         result = cursor.fetchone()
@@ -1189,7 +1300,7 @@ async def get_checkin_status(student_id: str):
             return {'status': 'not_present', 'message': 'Not yet checked in'}
             
     except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
+        return JSONResponse({'status': 'error', 'message': str(e)}, status_code=500)
     finally:
         if cursor:
             cursor.close()
@@ -1229,60 +1340,116 @@ async def recognize_face_endpoint(request: Request):
         
         # Get facial recognition system
         fr_system = get_facial_recognition_system()
+
+        # Always run raw detection first so UI can draw bounding boxes
+        raw_detections = fr_system.detect_faces(frame)
+        faces_payload = []
+        frame_h, frame_w = frame.shape[:2]
+        for detection in raw_detections:
+            box = detection.get('box') or ()
+            if len(box) == 4:
+                start_x = max(0, min(int(box[0]), frame_w - 1))
+                start_y = max(0, min(int(box[1]), frame_h - 1))
+                end_x = max(0, min(int(box[2]), frame_w - 1))
+                end_y = max(0, min(int(box[3]), frame_h - 1))
+                normalized_box = [start_x, start_y, end_x, end_y]
+            else:
+                normalized_box = []
+
+            faces_payload.append({
+                'box': normalized_box,
+                'name': None,
+                'confidence': float(detection.get('confidence', 0.0))
+            })
         
         # Process frame and detect faces
         detected_faces = fr_system.process_frame(frame)
+        if detected_faces:
+            for idx, face in enumerate(detected_faces):
+                if idx >= len(faces_payload):
+                    break
+                if face.get('name'):
+                    faces_payload[idx]['name'] = str(face.get('name'))
+                    faces_payload[idx]['confidence'] = float(face.get('confidence', faces_payload[idx]['confidence']))
         
-        if not detected_faces:
+        if not raw_detections:
             return JSONResponse({
                 'status': 'error',
                 'message': 'No face detected',
-                'recognized': False
+                'recognized': False,
+                'faces': []
+            })
+
+        if not detected_faces:
+            return JSONResponse({
+                'status': 'error',
+                'message': 'Face detected, but recognition model is not ready',
+                'recognized': False,
+                'faces': faces_payload
             })
         
         # Get the most confident face recognition
         best_match = max(detected_faces, key=lambda x: x['confidence'])
         
-        if best_match['confidence'] < 0.5:  # Confidence threshold
+        if best_match['confidence'] < 0.20:  # Recognition probability threshold
             return JSONResponse({
                 'status': 'error',
                 'message': 'Face confidence too low',
                 'recognized': False,
-                'confidence': float(best_match['confidence'])
+                'confidence': float(best_match['confidence']),
+                'faces': faces_payload
             })
         
-        # Look up student by recognized name
+        # Look up student by recognized label/name
         student_name = best_match['name']
+        predicted_label = str(student_name or '').strip()
+        normalized_label = _normalize_identity_value(predicted_label)
         cursor = db.connection.cursor(dictionary=True)
         
-        # Try to find student by first name or full name
         cursor.execute("""
-            SELECT * FROM students 
-            WHERE CONCAT(first_name, ' ', last_name) = %s 
-               OR first_name = %s
-            LIMIT 1
-        """, (student_name, student_name.split()[0] if student_name else ''))
-        
-        student = cursor.fetchone()
+            SELECT student_id, roll_number, first_name, last_name
+            FROM students
+        """)
+        students = cursor.fetchall() or []
+
+        student = None
+        for candidate in students:
+            full_name = f"{candidate.get('first_name', '')} {candidate.get('last_name', '')}".strip()
+            aliases = {
+                _normalize_identity_value(candidate.get('student_id')),
+                _normalize_identity_value(candidate.get('roll_number')),
+                _normalize_identity_value(full_name),
+                _normalize_identity_value(full_name.replace(' ', '_')),
+                _normalize_identity_value(candidate.get('first_name')),
+                _normalize_identity_value(candidate.get('last_name')),
+            }
+
+            if normalized_label and normalized_label in aliases:
+                student = candidate
+                break
         
         if student:
             return JSONResponse({
                 'status': 'success',
                 'message': f'Face recognized: {student["first_name"]} {student["last_name"]}',
                 'recognized': True,
+                'predicted_label': predicted_label,
                 'student': {
                     'id': student['student_id'],
                     'name': f"{student['first_name']} {student['last_name']}",
                     'roll_number': student['roll_number']
                 },
-                'confidence': float(best_match['confidence'])
+                'confidence': float(best_match['confidence']),
+                'faces': faces_payload
             })
         else:
             return JSONResponse({
                 'status': 'error',
                 'message': f'Face recognized but student not found in database: {student_name}',
                 'recognized': True,
-                'face_name': student_name
+                'face_name': student_name,
+                'predicted_label': predicted_label,
+                'faces': faces_payload
             })
         
     except Exception as e:
@@ -1297,4 +1464,19 @@ async def recognize_face_endpoint(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=5000, reload=False)
+
+    def find_available_port(start_port=5000, host="127.0.0.1", max_attempts=20):
+        """Find first available port starting from start_port."""
+        for port in range(start_port, start_port + max_attempts):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if sock.connect_ex((host, port)) != 0:
+                    return port
+        raise RuntimeError(f"No available port found in range {start_port}-{start_port + max_attempts - 1}")
+
+    base_port = int(os.getenv("PORT", "5000"))
+    selected_port = find_available_port(start_port=base_port)
+    if selected_port != base_port:
+        print(f"[INFO] Port {base_port} is busy. Using port {selected_port} instead.")
+
+    uvicorn.run(app, host="127.0.0.1", port=selected_port, reload=False)

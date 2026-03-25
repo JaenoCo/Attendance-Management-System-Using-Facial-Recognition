@@ -273,11 +273,6 @@
                         <label for="classId">Class/Grade</label>
                         <select id="classId" name="classId">
                             <option value="">Select Class</option>
-                            <option value="1">Class 10-A</option>
-                            <option value="2">Class 10-B</option>
-                            <option value="3">Class 11-A</option>
-                            <option value="4">Class 11-B</option>
-                            <option value="5">Class 12-A</option>
                         </select>
                     </div>
                     
@@ -290,7 +285,7 @@
             <div class="form-section capture-section">
                 <h2>2️⃣ Capture Face</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    After registering, capture the student's face from multiple angles
+                    Open the separate capture page for the selected student
                 </p>
                 
                 <div id="captureForm">
@@ -301,7 +296,7 @@
                         </select>
                     </div>
                     
-                    <button type="button" id="captureBtn">📹 Capture Face</button>
+                    <button type="button" id="captureBtn">📹 Open Capture Page</button>
                     <div id="captureMessage"></div>
                 </div>
                 
@@ -315,7 +310,29 @@
     
     <script>
         // Load students on page load
-        document.addEventListener('DOMContentLoaded', loadStudents);
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadClasses();
+            await loadStudents();
+        });
+
+        async function loadClasses() {
+            try {
+                const response = await fetch('/api/classes');
+                const classes = await response.json();
+                const classSelect = document.getElementById('classId');
+
+                classSelect.innerHTML = '<option value="">Select Class</option>';
+
+                classes.forEach(cls => {
+                    const option = document.createElement('option');
+                    option.value = cls.class_id;
+                    option.textContent = cls.class_name;
+                    classSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load classes:', error);
+            }
+        }
         
         // Form submission
         document.getElementById('registrationForm').addEventListener('submit', async (e) => {
@@ -349,9 +366,12 @@
                 
                 if (response.ok && data.status === 'success') {
                     messageDiv.className = 'message success';
-                    messageDiv.textContent = '✅ ' + data.message;
+                    messageDiv.textContent = '✅ ' + data.message + ' Redirecting to capture page...';
                     document.getElementById('registrationForm').reset();
                     await loadStudents();
+                    setTimeout(() => {
+                        window.location.href = `/admin/capture-images/${data.student_id}`;
+                    }, 700);
                 } else {
                     messageDiv.className = 'message error';
                     messageDiv.textContent = '❌ ' + (data.message || 'Registration failed');
@@ -372,33 +392,7 @@
                 return;
             }
             
-            const messageDiv = document.getElementById('captureMessage');
-            messageDiv.className = 'message info';
-            messageDiv.innerHTML = '<div class="spinner"></div><p>Opening camera for face capture...</p>';
-            messageDiv.style.display = 'block';
-            
-            try {
-                const formData = new FormData();
-                formData.append('student_id', studentId);
-                
-                const response = await fetch('/api/admin/capture-face', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    messageDiv.className = 'message success';
-                    messageDiv.textContent = '✅ Camera opened! Capture the student\'s face from multiple angles. Press SPACE to capture and Q to quit.';
-                } else {
-                    messageDiv.className = 'message error';
-                    messageDiv.textContent = '❌ ' + data.message;
-                }
-            } catch (error) {
-                messageDiv.className = 'message error';
-                messageDiv.textContent = '❌ Error: ' + error.message;
-            }
+            window.location.href = `/admin/capture-images/${studentId}`;
         });
         
         // Load students list

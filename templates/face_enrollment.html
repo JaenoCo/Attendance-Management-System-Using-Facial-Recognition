@@ -79,6 +79,15 @@
         position: relative;
         overflow: hidden;
     }
+    .camera-box {
+        background: white;
+        padding: 12px;
+        border-radius: 8px;
+        border: 2px solid #ddd;
+    }
+    .camera-actions {
+        margin-top: 12px;
+    }
     .camera-feed video {
         width: 100%;
         height: 100%;
@@ -107,9 +116,80 @@
         margin-top: 10px;
         text-align: center;
     }
+    
+    /* Capture notification pop-up */
+    .capture-notification {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.8);
+        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        color: white;
+        padding: 30px 50px;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        z-index: 10000;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.3s ease;
+        text-align: center;
+        min-width: 250px;
+    }
+    
+    .capture-notification.show {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+        pointer-events: auto;
+    }
+    
+    .capture-notification .capture-icon {
+        font-size: 50px;
+        margin-bottom: 15px;
+        animation: captureFlash 0.6s ease;
+    }
+    
+    .capture-notification .capture-text {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 10px 0;
+    }
+    
+    .capture-notification .capture-count-text {
+        font-size: 14px;
+        opacity: 0.9;
+        margin-top: 8px;
+    }
+    
+    @keyframes captureFlash {
+        0% {
+            transform: scale(0.5);
+            opacity: 0;
+        }
+        50% {
+            transform: scale(1.1);
+        }
+        100% {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+    
     @media (max-width: 768px) {
         .enrollment-container {
             grid-template-columns: 1fr;
+        }
+        
+        .capture-notification {
+            padding: 20px 30px;
+            min-width: 200px;
+        }
+        
+        .capture-notification .capture-icon {
+            font-size: 35px;
+        }
+        
+        .capture-notification .capture-text {
+            font-size: 16px;
         }
     }
 </style>
@@ -137,7 +217,9 @@
             </div>
             <div class="form-group">
                 <label>Class/Grade</label>
-                <input type="text" id="class" placeholder="10-A">
+                <select id="classId">
+                    <option value="">Select Class</option>
+                </select>
             </div>
             <div class="form-group">
                 <label>Parent Contact</label>
@@ -148,9 +230,9 @@
                 Faces Captured: <strong id="captureCount">0</strong> / 30
             </div>
 
-            <div class="button-group">
-                <button type="button" class="btn-primary" onclick="startCamera()">📷 Start Camera</button>
-                <button type="button" class="btn-secondary" onclick="stopCamera()">⏹️ Stop Camera</button>
+            <div style="background: #fff3cd; padding: 12px; border-radius: 3px; margin-top: 10px; border-left: 4px solid #ff9800; display:none;" id="keyboardHints">
+                <strong>⌨️ Keyboard Shortcuts:</strong><br>
+                <small>SPACE = Capture frame | ESC = Exit camera</small>
             </div>
 
             <div class="button-group" style="margin-top: 10px;">
@@ -165,10 +247,23 @@
 
     <!-- Right Column: Camera Feed -->
     <div>
-        <div class="camera-feed" id="cameraFeed">
-            <div class="camera-placeholder">
-                <p>📷</p>
-                <p>Camera feed will appear here</p>
+        <div class="camera-box">
+            <div class="camera-feed" id="cameraFeed">
+                <div class="camera-placeholder">
+                    <p>📷</p>
+                    <p>Camera feed will appear here</p>
+                </div>
+            </div>
+
+            <div class="camera-actions">
+                <div class="button-group" style="margin-top: 0;">
+                    <button type="button" class="btn-primary" onclick="startCamera()" id="startCameraBtn">📷 Start Camera</button>
+                    <button type="button" class="btn-secondary" onclick="stopCamera()" id="stopCameraBtn" style="display:none;">⏹️ Stop Camera</button>
+                </div>
+
+                <div class="button-group" style="margin-top: 10px;">
+                    <button type="button" class="btn-primary" id="captureNowBtn" onclick="captureFrame()" style="display:none;">📸 Capture Frame Now (SPACE)</button>
+                </div>
             </div>
         </div>
 
@@ -185,9 +280,57 @@
     </div>
 </div>
 
+<!-- Capture Notification Pop-up -->
+<div class="capture-notification" id="captureNotification">
+    <div class="capture-icon">📸</div>
+    <div class="capture-text">Frame Captured!</div>
+    <div class="capture-count-text" id="notificationCount"></div>
+</div>
+
 <script>
     let cameraStream = null;
     let capturedFaces = 0;
+    let cameraActive = false;
+    let autoCapturInterval = null;
+    const CAPTURE_INTERVAL = 1500; // Capture every 1.5 seconds
+    const TARGET_CAPTURES = 30;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadClasses();
+        // Add keyboard event listeners
+        document.addEventListener('keydown', handleKeyPress);
+    });
+
+    function handleKeyPress(e) {
+        if (!cameraActive) return;
+        
+        if (e.code === 'Space') {
+            e.preventDefault();
+            captureFrame();
+        } else if (e.code === 'Escape') {
+            e.preventDefault();
+            stopCamera();
+        }
+    }
+
+    async function loadClasses() {
+        try {
+            const response = await fetch('/api/classes');
+            const classes = await response.json();
+            const classSelect = document.getElementById('classId');
+
+            classSelect.innerHTML = '<option value="">Select Class</option>';
+
+            classes.forEach(cls => {
+                const option = document.createElement('option');
+                option.value = cls.class_id;
+                option.textContent = cls.class_name;
+                classSelect.appendChild(option);
+            });
+        } catch (err) {
+            console.error('Failed to load classes:', err);
+        }
+    }
 
     async function startCamera() {
         try {
@@ -197,73 +340,210 @@
                 return;
             }
 
+            console.log('[INFO] Requesting camera access...');
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 640, height: 480 }
+                video: { 
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'user'
+                },
+                audio: false
             });
             
+            console.log('[INFO] Camera access granted');
             const video = document.createElement('video');
+            video.id = 'enrollmentVideo';
             video.srcObject = stream;
             video.autoplay = true;
-            video.playsinline = true;
+            video.playsInline = true;
+            video.muted = true;
+            
+            // IMPORTANT: Ensure video plays
+            video.play().catch(err => {
+                console.error('[ERROR] Video play failed:', err);
+                showStatus('Failed to start video playback', 'error');
+            });
             
             const cameraFeed = document.getElementById('cameraFeed');
+            cameraFeed.style.position = 'relative';
             cameraFeed.innerHTML = '';
             cameraFeed.appendChild(video);
             
+            // Add canvas overlay for frame count display
+            const canvas = document.createElement('canvas');
+            canvas.id = 'enrollmentCanvas';
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.cursor = 'crosshair';
+            cameraFeed.appendChild(canvas);
+            
             cameraStream = stream;
+            cameraActive = true;
             capturedFaces = 0;
             document.getElementById('captureCount').textContent = '0';
-            showStatus('Camera started. Capturing faces...', 'success');
+            document.getElementById('startCameraBtn').style.display = 'none';
+            document.getElementById('stopCameraBtn').style.display = 'block';
+            document.getElementById('captureNowBtn').style.display = 'block';
+            document.getElementById('keyboardHints').style.display = 'block';
+            
+            showStatus('✅ Camera started. Press SPACE to capture or ESC to exit', 'success');
+            console.log('[INFO] Camera started successfully');
 
-            // Simulate face capture (in production, would use cv2 or MediaPipe)
-            captureFrames();
+            // Start auto-capture
+            startAutoCapture();
         } catch (err) {
-            showStatus('Camera access denied. Please allow camera permissions.', 'error');
-            console.error(err);
+            cameraActive = false;
+            if (err.name === 'NotAllowedError') {
+                showStatus('❌ Camera permission denied. Please allow camera access in settings.', 'error');
+            } else if (err.name === 'NotFoundError') {
+                showStatus('❌ No camera found. Please check your camera connection.', 'error');
+            } else {
+                showStatus('❌ Camera error: ' + err.message, 'error');
+            }
+            console.error('[ERROR] Camera access failed:', err);
         }
     }
 
     function stopCamera() {
-        if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-            cameraStream = null;
-            
-            const cameraFeed = document.getElementById('cameraFeed');
-            cameraFeed.innerHTML = '<div class="camera-placeholder"><p>📷</p><p>Camera stopped</p></div>';
-            showStatus('Camera stopped', 'warning');
+        console.log('[INFO] Stopping camera...');
+        
+        if (autoCapturInterval) {
+            clearInterval(autoCapturInterval);
+            autoCapturInterval = null;
         }
+        
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => {
+                track.stop();
+                console.log('[INFO] Camera track stopped');
+            });
+            cameraStream = null;
+        }
+        
+        cameraActive = false;
+        const cameraFeed = document.getElementById('cameraFeed');
+        cameraFeed.innerHTML = '<div class="camera-placeholder"><p>📷</p><p>Camera stopped</p></div>';
+        
+        document.getElementById('startCameraBtn').style.display = 'block';
+        document.getElementById('stopCameraBtn').style.display = 'none';
+        document.getElementById('captureNowBtn').style.display = 'none';
+        document.getElementById('keyboardHints').style.display = 'none';
+        
+        showStatus(`Camera stopped. Total frames captured: ${capturedFaces}`, 'warning');
+        console.log(`[INFO] Camera stopped. Total captures: ${capturedFaces}`);
     }
 
-    function captureFrames() {
-        if (!cameraStream || capturedFaces >= 30) return;
+    function startAutoCapture() {
+        if (autoCapturInterval) clearInterval(autoCapturInterval);
+        
+        autoCapturInterval = setInterval(() => {
+            if (cameraActive && capturedFaces < TARGET_CAPTURES) {
+                captureFrame();
+            } else if (capturedFaces >= TARGET_CAPTURES) {
+                clearInterval(autoCapturInterval);
+                autoCapturInterval = null;
+            }
+        }, CAPTURE_INTERVAL);
+    }
 
-        // Simulate capture every 200ms
-        setTimeout(() => {
+    function captureFrame() {
+        if (!cameraActive) {
+            console.log('[WARNING] Camera not active');
+            return;
+        }
+
+        const video = document.getElementById('enrollmentVideo');
+        if (!video) {
+            console.error('[ERROR] Video element not found');
+            showStatus('Error: Video element not found', 'error');
+            return;
+        }
+
+        // Verify video is playing
+        if (video.paused || video.ended) {
+            console.error('[ERROR] Video is not playing');
+            showStatus('Error: Video is paused or ended', 'error');
+            return;
+        }
+
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+            console.warn('[WARNING] Video dimensions not ready yet');
+            return;
+        }
+
+        try {
+            // Create canvas and capture frame
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw video frame
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
             capturedFaces++;
             document.getElementById('captureCount').textContent = capturedFaces;
             
-            if (capturedFaces < 30) {
-                captureFrames();
-            } else {
-                showStatus('30 faces captured! Ready to register.', 'success');
+            // Show capture notification pop-up
+            showCaptureNotification(capturedFaces);
+            
+            // Provide visual feedback
+            const feedCanvas = document.getElementById('enrollmentCanvas');
+            if (feedCanvas && feedCanvas.getContext) {
+                feedCanvas.width = video.offsetWidth;
+                feedCanvas.height = video.offsetHeight;
+                const feedCtx = feedCanvas.getContext('2d');
+                
+                // Draw frame indicator
+                feedCtx.strokeStyle = '#4caf50';
+                feedCtx.lineWidth = 3;
+                feedCtx.strokeRect(10, 10, feedCanvas.width - 20, feedCanvas.height - 20);
+                
+                // Draw capture count
+                feedCtx.fillStyle = '#4caf50';
+                feedCtx.font = 'bold 20px Arial';
+                feedCtx.fillText(`Captured: ${capturedFaces}/${TARGET_CAPTURES}`, 20, 40);
+                
+                // Clear after 200ms
+                setTimeout(() => {
+                    feedCtx.clearRect(0, 0, feedCanvas.width, feedCanvas.height);
+                }, 200);
             }
-        }, 200);
+
+            console.log(`[SUCCESS] Frame ${capturedFaces}/${TARGET_CAPTURES} captured`);
+
+            if (capturedFaces >= TARGET_CAPTURES) {
+                showStatus(`✅ Captured all ${TARGET_CAPTURES} frames! Ready to register.`, 'success');
+                if (autoCapturInterval) {
+                    clearInterval(autoCapturInterval);
+                    autoCapturInterval = null;
+                }
+                document.getElementById('captureNowBtn').textContent = '📸 Auto-capture Complete!';
+            }
+        } catch (err) {
+            console.error('[ERROR] Frame capture failed:', err);
+            showStatus('Error capturing frame: ' + err.message, 'error');
+        }
     }
 
     document.getElementById('enrollmentForm').addEventListener('submit', async (e) => {
         e.preventDefault();
 
         if (capturedFaces < 10) {
-            showStatus('Please capture at least 10 faces before registering', 'error');
+            showStatus('Please capture at least 10 faces before registering (currently ' + capturedFaces + '/10)', 'error');
             return;
         }
+
+        // Stop camera first
+        stopCamera();
 
         const formData = new FormData();
         formData.append('roll_number', document.getElementById('studentId').value);
         formData.append('first_name', document.getElementById('firstName').value);
         formData.append('last_name', document.getElementById('lastName').value);
-        if (document.getElementById('class').value) {
-            formData.append('class_id', document.getElementById('class').value);
+        if (document.getElementById('classId').value) {
+            formData.append('class_id', document.getElementById('classId').value);
         }
 
         try {
@@ -281,24 +561,44 @@
                     document.getElementById('enrollmentForm').reset();
                     capturedFaces = 0;
                     document.getElementById('captureCount').textContent = '0';
-                    stopCamera();
                 }, 2000);
             } else {
                 showStatus('❌ ' + (data.message || 'Registration failed'), 'error');
             }
         } catch (err) {
             showStatus('❌ Error: ' + (err.message || 'Unknown error'), 'error');
-            console.error('Enrollment error:', err);
+            console.error('[ERROR] Enrollment error:', err);
         }
     });
 
-    function showStatus(message, type = 'success') {
+    function showStatus(message, type = 'info') {
         const statusBox = document.getElementById('statusBox');
         const statusText = document.getElementById('statusText');
-        statusBox.className = 'status-box';
-        if (type !== 'success') statusBox.classList.add(type);
+        
         statusText.textContent = message;
+        statusBox.className = type;
         statusBox.style.display = 'block';
+        
+        if (type === 'success') {
+            setTimeout(() => {
+                statusBox.style.display = 'none';
+            }, 3000);
+        }
+    }
+
+    function showCaptureNotification(count) {
+        const notification = document.getElementById('captureNotification');
+        const countText = document.getElementById('notificationCount');
+        
+        countText.textContent = `${count}/${TARGET_CAPTURES}`;
+        
+        // Show notification
+        notification.classList.add('show');
+        
+        // Hide after 1 second
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 1000);
     }
 </script>
 {% endblock %}

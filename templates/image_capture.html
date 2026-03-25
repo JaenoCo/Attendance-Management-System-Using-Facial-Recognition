@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capture Images - Attendance System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            padding: 24px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .student-info {
+            background: #f9f9f9;
+            border-left: 4px solid #667eea;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .capture-layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .camera-box {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background: #fff;
+        }
+
+        .camera-feed {
+            background: #000;
+            border-radius: 6px;
+            aspect-ratio: 4 / 3;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            text-align: center;
+        }
+
+        .camera-feed video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .btn-secondary {
+            background: #dc3545;
+        }
+
+        .btn-link {
+            background: #6c757d;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .counter {
+            background: #eef3ff;
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            color: #333;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 6px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .message.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .message.info {
+            display: block;
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        @media (max-width: 768px) {
+            .capture-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 Capture Student Images</h1>
+        <p class="subtitle">Use this page after registration to capture face images.</p>
+
+        <div class="student-info">
+            <strong>Student:</strong> {{ student.first_name }} {{ student.last_name }}<br>
+            <strong>Roll Number:</strong> {{ student.roll_number }}<br>
+            <strong>Student ID:</strong> {{ student.student_id }}
+        </div>
+
+        <div class="capture-layout">
+            <div class="camera-box">
+                <div class="camera-feed" id="cameraFeed">
+                    <div>
+                        <p>📷 Camera preview will appear here</p>
+                    </div>
+                </div>
+                <div class="counter">Captured: <strong id="captureCount">0</strong></div>
+                <div class="counter">Detection: <strong id="recognitionLabel">Idle</strong></div>
+            </div>
+
+            <div class="actions">
+                <button class="btn-primary" id="captureBtn" onclick="captureImage()">Capture Image</button>
+                <button class="btn-secondary" id="stopBtn" onclick="stopCamera()">Stop Camera</button>
+                <button class="btn-link" onclick="window.location.href='/admin/register-student'">Back to Registration</button>
+            </div>
+        </div>
+
+        <div id="messageBox" class="message"></div>
+    </div>
+
+    <script>
+        const studentId = Number("{{ student.student_id }}");
+        let cameraStream = null;
+        let captureCount = 0;
+        let isCapturing = false;
+        let recognitionIntervalId = null;
+        let recognitionInProgress = false;
+        let lastDetectedFaces = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            startCamera();
+            window.addEventListener('beforeunload', stopCamera);
+            window.addEventListener('resize', () => {
+                const video = document.getElementById('captureVideo');
+                resizeOverlayCanvas(video);
+                drawDetectedFaces(lastDetectedFaces);
+            });
+        });
+
+        function resizeOverlayCanvas(video) {
+            const overlay = document.getElementById('overlayCanvas');
+            if (!video || !overlay || !video.videoWidth || !video.videoHeight) return;
+
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+        }
+
+        function drawDetectedFaces(faces = []) {
+            const overlay = document.getElementById('overlayCanvas');
+            if (!overlay) return;
+
+            const ctx = overlay.getContext('2d');
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            faces.forEach(face => {
+                const [startX, startY, endX, endY] = face.box || [];
+                if ([startX, startY, endX, endY].some(v => typeof v !== 'number')) {
+                    return;
+                }
+
+                const confidence = Number(face.confidence || 0);
+                const label = `Face ${(confidence * 100).toFixed(1)}%`;
+
+                ctx.strokeStyle = '#00ff66';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+
+                ctx.fillStyle = '#00ff66';
+                ctx.font = 'bold 14px Segoe UI';
+                const textY = startY - 8 > 14 ? startY - 8 : startY + 18;
+                ctx.fillText(label, startX, textY);
+            });
+        }
+
+        function setRecognitionLabel(text) {
+            const label = document.getElementById('recognitionLabel');
+            if (label) {
+                label.textContent = text;
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 },
+                    audio: false
+                });
+
+                cameraStream = stream;
+                const video = document.createElement('video');
+                video.id = 'captureVideo';
+                video.srcObject = stream;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.muted = true;
+
+                const feed = document.getElementById('cameraFeed');
+                feed.innerHTML = '';
+                feed.appendChild(video);
+
+                const overlay = document.createElement('canvas');
+                overlay.id = 'overlayCanvas';
+                feed.appendChild(overlay);
+
+                video.onloadedmetadata = () => {
+                    resizeOverlayCanvas(video);
+                    drawDetectedFaces([]);
+                };
+
+                video.onresize = () => {
+                    resizeOverlayCanvas(video);
+                    drawDetectedFaces(lastDetectedFaces);
+                };
+
+                startLiveRecognition();
+
+                showMessage('Camera started. Face boxes are shown live. Click "Capture Image" to save.', 'info');
+            } catch (error) {
+                showMessage('Camera error: ' + error.message, 'error');
+            }
+        }
+
+        function drawDetectionBox(box, confidence = 0) {
+            if (!Array.isArray(box) || box.length !== 4) {
+                drawDetectedFaces([]);
+                return;
+            }
+
+            drawDetectedFaces([{ box, confidence }]);
+        }
+
+        function getCurrentFrameData(video) {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/jpeg');
+        }
+
+        async function pollRecognition() {
+            if (recognitionInProgress || !cameraStream) {
+                return;
+            }
+
+            const video = document.getElementById('captureVideo');
+            if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+                return;
+            }
+
+            recognitionInProgress = true;
+            try {
+                const imageData = getCurrentFrameData(video);
+                const response = await fetch('/api/face/detect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                const faces = Array.isArray(data.faces) ? data.faces : [];
+                lastDetectedFaces = faces;
+                drawDetectedFaces(faces);
+
+                setRecognitionLabel(faces.length > 0 ? 'Face detected' : 'No faces detected');
+            } catch (error) {
+                setRecognitionLabel('Detection unavailable');
+            } finally {
+                recognitionInProgress = false;
+            }
+        }
+
+        function startLiveRecognition() {
+            if (recognitionIntervalId) {
+                clearInterval(recognitionIntervalId);
+            }
+
+            setRecognitionLabel('Scanning for faces...');
+            recognitionIntervalId = setInterval(pollRecognition, 700);
+        }
+
+        function stopLiveRecognition() {
+            if (recognitionIntervalId) {
+                clearInterval(recognitionIntervalId);
+                recognitionIntervalId = null;
+            }
+            recognitionInProgress = false;
+            lastDetectedFaces = [];
+            drawDetectedFaces([]);
+            setRecognitionLabel('Idle');
+        }
+
+        async function captureImage() {
+            if (isCapturing) {
+                return;
+            }
+
+            const video = document.getElementById('captureVideo');
+            if (!video || !cameraStream) {
+                showMessage('Camera is not active.', 'error');
+                return;
+            }
+
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                showMessage('Video not ready yet. Try again.', 'error');
+                return;
+            }
+
+            try {
+                isCapturing = true;
+                const captureBtn = document.getElementById('captureBtn');
+                captureBtn.disabled = true;
+
+                const imageData = getCurrentFrameData(video);
+
+                const formData = new FormData();
+                formData.append('student_id', studentId);
+                formData.append('image_data', imageData);
+
+                const response = await fetch('/api/face/capture', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json().catch(() => ({}));
+
+                if (response.ok && data.status === 'success') {
+                    captureCount += 1;
+                    document.getElementById('captureCount').textContent = String(captureCount);
+                    drawDetectionBox(data.box, data.confidence);
+                    showMessage('Image captured successfully.', 'success');
+                } else {
+                    if (Array.isArray(data.box) && data.box.length === 4) {
+                        drawDetectionBox(data.box, data.confidence || 0);
+                    }
+                    showMessage(data.message || 'Capture failed.', 'error');
+                }
+            } catch (error) {
+                showMessage('Capture error: ' + error.message, 'error');
+            } finally {
+                isCapturing = false;
+                const captureBtn = document.getElementById('captureBtn');
+                captureBtn.disabled = false;
+            }
+        }
+
+        function stopCamera() {
+            stopLiveRecognition();
+
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+
+            const feed = document.getElementById('cameraFeed');
+            if (feed) {
+                feed.innerHTML = '<div><p>📷 Camera stopped</p></div>';
+            }
+
+            isCapturing = false;
+            const captureBtn = document.getElementById('captureBtn');
+            if (captureBtn) {
+                captureBtn.disabled = false;
+            }
+        }
+
+        function showMessage(message, type) {
+            const box = document.getElementById('messageBox');
+            box.className = 'message ' + type;
+            box.textContent = message;
+        }
+    </script>
+</body>
+</html>

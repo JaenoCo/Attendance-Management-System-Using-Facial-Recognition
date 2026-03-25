@@ -134,6 +134,22 @@
             margin-bottom: 15px;
             height: auto;
         }
+
+        .video-frame {
+            position: relative;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            border-radius: 8px;
+        }
         
         .video-info {
             text-align: center;
@@ -409,9 +425,13 @@
                         <p>Camera is scanning your face...</p>
                         <p>Please look at the camera for <span id="detectionTimer">5</span> seconds</p>
                     </div>
-                    <video id="videoFeed" autoplay playsinline muted></video>
+                    <div class="video-frame">
+                        <video id="videoFeed" autoplay playsinline muted></video>
+                        <canvas id="overlayCanvas"></canvas>
+                    </div>
                     <canvas id="canvas" style="display:none;"></canvas>
                     <div class="recognition-status" id="recognitionStatus"></div>
+                    <button type="button" class="submit-btn" id="cancelCameraBtn" onclick="stopCameraAndReset()" style="margin-top: 15px; background: #dc3545;">❌ Cancel & Close Camera</button>
                 </div>
                 
                 <div id="studentInfo"></div>
@@ -435,6 +455,57 @@
         let videoStream = null;
         let recognizedStudent = null;
         let recognitionInProgress = false;
+        let detectionIntervalId = null;
+        let lastDetectedFaces = [];
+
+        function resizeOverlayCanvas() {
+            const video = document.getElementById('videoFeed');
+            const overlay = document.getElementById('overlayCanvas');
+            if (!video || !overlay || !video.videoWidth || !video.videoHeight) return;
+
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+        }
+
+        function drawBoundingBoxes(faces = []) {
+            const overlay = document.getElementById('overlayCanvas');
+            if (!overlay) return;
+            const ctx = overlay.getContext('2d');
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            faces.forEach(face => {
+                const [startX, startY, endX, endY] = face.box || [];
+                if ([startX, startY, endX, endY].some(v => typeof v !== 'number')) return;
+
+                const confidence = Number(face.confidence || 0);
+                const isStrong = confidence >= 0.5;
+                const color = isStrong ? '#00ff66' : '#ff9800';
+                const label = face.name
+                    ? `${face.name} ${(confidence * 100).toFixed(1)}%`
+                    : `Face ${(confidence * 100).toFixed(1)}%`;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+
+                ctx.fillStyle = color;
+                ctx.font = '14px Segoe UI';
+                const textY = startY - 8 > 14 ? startY - 8 : startY + 18;
+                ctx.fillText(label, startX, textY);
+            });
+        }
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resizeOverlayCanvas();
+            drawBoundingBoxes(lastDetectedFaces);
+        });
         
         // Update time display
         function updateTime() {
@@ -456,10 +527,16 @@
         async function startFaceRecognition() {
             const submitBtn = document.getElementById('submitBtn');
             const videoContainer = document.getElementById('videoContainer');
-            const messageDiv = document.getElementById('message');
+
+            if (videoStream || recognitionInProgress) {
+                showMessage('Camera is already running.', 'info');
+                return;
+            }
             
             submitBtn.disabled = true;
             videoContainer.classList.add('active');
+            recognizedStudent = null;
+            lastDetectedFaces = [];
             
             try {
                 // Request camera access
@@ -476,6 +553,12 @@
                 await new Promise(resolve => {
                     video.onloadedmetadata = resolve;
                 });
+                await video.play();
+                resizeOverlayCanvas();
+                video.onresize = () => {
+                    resizeOverlayCanvas();
+                    drawBoundingBoxes(lastDetectedFaces);
+                };
                 
                 // Start face recognition
                 startFaceDetectionLoop();
@@ -498,15 +581,31 @@
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             const recognitionStatus = document.getElementById('recognitionStatus');
+            const detectionWindowMs = 12000;
+            const maxDetectionWindowMs = 20000;
+            const minimumCompletedRequests = 8;
             
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+            resizeOverlayCanvas();
             
-            const detectionTimer = 5; // seconds
             let detectionCount = 0;
-            const detectionInterval = setInterval(async () => {
+            let completedRequests = 0;
+            const startTime = Date.now();
+            detectionIntervalId = setInterval(async () => {
                 if (!videoStream) {
-                    clearInterval(detectionInterval);
+                    clearInterval(detectionIntervalId);
+                    return;
+                }
+
+                const elapsedMs = Date.now() - startTime;
+                const remainingSeconds = Math.max(0, Math.ceil((detectionWindowMs - elapsedMs) / 1000));
+                document.getElementById('detectionTimer').textContent = remainingSeconds;
+
+                if (recognitionInProgress) {
+                    recognitionStatus.className = 'recognition-status detecting';
+                    recognitionStatus.textContent = `🔍 Scanning face... (${completedRequests}/${minimumCompletedRequests})`;
+                    drawBoundingBoxes(lastDetectedFaces);
                     return;
                 }
                 
@@ -515,32 +614,38 @@
                 const imageData = canvas.toDataURL('image/jpeg');
                 
                 detectionCount++;
-                document.getElementById('detectionTimer').textContent = Math.max(0, detectionTimer - detectionCount);
-                
-                if (detectionCount <= 5) {
-                    recognitionStatus.className = 'recognition-status detecting';
-                    recognitionStatus.textContent = '🔍 Scanning face... (' + detectionCount + '/5)';
-                    
-                    // Try to recognize face
-                    if (detectionCount % 2 === 0) { // Every 2 frames to reduce server load
-                        await recognizeFace(imageData);
-                    }
-                } else {
-                    clearInterval(detectionInterval);
+
+                recognitionStatus.className = 'recognition-status detecting';
+                recognitionStatus.textContent = `🔍 Scanning face... (${completedRequests}/${minimumCompletedRequests})`;
+
+                const result = await recognizeFace(imageData);
+                completedRequests++;
+                if (result && Array.isArray(result.faces)) {
+                    lastDetectedFaces = result.faces;
+                }
+                drawBoundingBoxes(lastDetectedFaces);
+
+                if (
+                    elapsedMs >= detectionWindowMs &&
+                    (completedRequests >= minimumCompletedRequests || elapsedMs >= maxDetectionWindowMs)
+                ) {
+                    clearInterval(detectionIntervalId);
                     recognitionStatus.className = 'recognition-status';
                     recognitionStatus.style.display = 'none';
+                    drawBoundingBoxes([]);
                     
-                    // If no face was recognized, show error
+                    // If no face was recognized, show error and reset
                     if (!recognizedStudent) {
                         showMessage('⚠️ Face not recognized. Please try again.', 'error');
-                        resetRecognition();
+                        stopCameraAndReset();
                     }
                 }
             }, 500); // Capture every 500ms
         }
         
         async function recognizeFace(imageData) {
-            if (recognizedStudent || recognitionInProgress) return;
+            if (recognizedStudent) return { faces: lastDetectedFaces };
+            if (recognitionInProgress) return { faces: lastDetectedFaces };
             
             recognitionInProgress = true;
             
@@ -557,11 +662,13 @@
                     recognizedStudent = data.student;
                     handleFaceRecognized(data.student);
                 }
+                return data;
             } catch (error) {
                 console.error('Face recognition error:', error);
+                return { faces: lastDetectedFaces };
+            } finally {
+                recognitionInProgress = false;
             }
-            
-            recognitionInProgress = false;
         }
         
         async function handleFaceRecognized(student) {
@@ -646,16 +753,30 @@
         }
         
         function resetRecognition() {
+            if (detectionIntervalId) {
+                clearInterval(detectionIntervalId);
+                detectionIntervalId = null;
+            }
+
+            drawBoundingBoxes([]);
+            
             document.getElementById('checkinForm').reset();
             document.getElementById('videoContainer').classList.remove('active');
             document.getElementById('studentInfo').innerHTML = '';
             document.getElementById('submitBtn').disabled = false;
             recognizedStudent = null;
+            recognitionInProgress = false;
+            lastDetectedFaces = [];
             
             if (videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
                 videoStream = null;
             }
+        }
+        
+        function stopCameraAndReset() {
+            resetRecognition();
+            showMessage('Camera closed. Try again or change settings.', 'warning');
         }
         
         function showMessage(message, type) {

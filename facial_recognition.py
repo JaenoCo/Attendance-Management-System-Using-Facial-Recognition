@@ -7,7 +7,16 @@ import cv2
 import numpy as np
 import pickle
 import os
-from config import FACE_DETECTOR_PATH, FACE_EMBEDDING_MODEL, RECOGNIZER_MODEL, LABEL_ENCODER
+import time
+from config import (
+    FACE_DETECTOR_PATH,
+    FACE_EMBEDDING_MODEL,
+    RECOGNIZER_MODEL,
+    LABEL_ENCODER,
+    CONFIDENCE_THRESHOLD,
+    FACE_MIN_WIDTH,
+    FACE_MIN_HEIGHT,
+)
 
 class FacialRecognitionSystem:
     """Manage facial recognition operations"""
@@ -17,6 +26,19 @@ class FacialRecognitionSystem:
         self.embedder = None
         self.recognizer = None
         self.le = None
+        self._last_model_reload_attempt = 0.0
+        self._load_models()
+
+    def _ensure_models_loaded(self):
+        """Attempt to lazy-load missing models at runtime with retry throttling."""
+        if self.detector is not None and self.embedder is not None and self.recognizer is not None and self.le is not None:
+            return
+
+        now = time.time()
+        if now - self._last_model_reload_attempt < 3:
+            return
+
+        self._last_model_reload_attempt = now
         self._load_models()
     
     def _load_models(self):
@@ -52,6 +74,7 @@ class FacialRecognitionSystem:
     
     def detect_faces(self, frame):
         """Detect faces in a frame"""
+        self._ensure_models_loaded()
         if self.detector is None:
             return []
         
@@ -65,7 +88,7 @@ class FacialRecognitionSystem:
             faces = []
             for i in range(0, detections.shape[2]):
                 confidence = detections[0, 0, i, 2]
-                if confidence > 0.5:
+                if confidence > CONFIDENCE_THRESHOLD:
                     box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                     (startX, startY, endX, endY) = box.astype("int")
                     faces.append({
@@ -80,6 +103,7 @@ class FacialRecognitionSystem:
     
     def get_face_embedding(self, face):
         """Extract embedding from a face ROI"""
+        self._ensure_models_loaded()
         if self.embedder is None:
             return None
         
@@ -95,6 +119,7 @@ class FacialRecognitionSystem:
     
     def recognize_face(self, embedding):
         """Recognize a face from its embedding"""
+        self._ensure_models_loaded()
         if self.recognizer is None or self.le is None:
             return None, 0
         
@@ -110,6 +135,7 @@ class FacialRecognitionSystem:
     
     def process_frame(self, frame):
         """Process a frame and return recognized faces"""
+        self._ensure_models_loaded()
         faces_data = []
         
         try:
@@ -121,7 +147,7 @@ class FacialRecognitionSystem:
                 
                 # Extract face ROI
                 face = frame[startY:endY, startX:endX]
-                if face.shape[0] < 20 or face.shape[1] < 20:
+                if face.shape[0] < FACE_MIN_HEIGHT or face.shape[1] < FACE_MIN_WIDTH:
                     continue
                 
                 # Get embedding
@@ -195,7 +221,13 @@ class FacialRecognitionSystem:
             }
 
 
+_fr_system_instance = None
+
+
 # Factory function to get facial recognition system
 def get_facial_recognition_system():
     """Get or create facial recognition system instance"""
-    return FacialRecognitionSystem()
+    global _fr_system_instance
+    if _fr_system_instance is None:
+        _fr_system_instance = FacialRecognitionSystem()
+    return _fr_system_instance
