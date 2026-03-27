@@ -1,92 +1,151 @@
 {% extends "base.html" %}
 
 {% block title %}Settings - Attendance System{% endblock %}
+{% block page_name %}settings{% endblock %}
+{% block page_header %}Settings{% endblock %}
 
 {% block content %}
-<h2>⚙️ Settings</h2>
+<section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <article class="xl:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+        <h2 class="font-semibold">System Configuration</h2>
+        <div class="mt-4 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">School Name</span>
+                    <input id="schoolName" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="Attendance Academy">
+                </label>
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">Late Threshold (minutes)</span>
+                    <input id="lateThreshold" type="number" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="15">
+                </label>
+            </div>
 
-<style>
-    .settings-section {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        border: 1px solid #ddd;
-    }
-    .settings-section h3 {
-        margin-bottom: 15px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid #667eea;
-    }
-    .setting-item {
-        margin-bottom: 15px;
-    }
-    .setting-item label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 500;
-    }
-    .setting-item input, .setting-item select {
-        width: 100%;
-        max-width: 300px;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-    }
-    button {
-        background: #667eea;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        margin-top: 10px;
-    }
-    button:hover {
-        background: #764ba2;
-    }
-</style>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">School Start</span>
+                    <input id="schoolStart" type="time" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="08:00">
+                </label>
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">School End</span>
+                    <input id="schoolEnd" type="time" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="15:30">
+                </label>
+            </div>
 
-<div class="settings-section">
-    <h3>School Information</h3>
-    <div class="setting-item">
-        <label>School Name</label>
-        <input type="text" value="Your School Name">
-    </div>
-    <div class="setting-item">
-        <label>School Start Time</label>
-        <input type="time">
-    </div>
-    <div class="setting-item">
-        <label>School End Time</label>
-        <input type="time">
-    </div>
-    <button onclick="saveSettings()">Save Changes</button>
-</div>
+            <div class="space-y-3">
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Enable Auto Face Training</span>
+                    <input id="toggleAutoTrain" type="checkbox" class="h-4 w-4" checked>
+                </label>
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Enable SMS Alerts</span>
+                    <input id="toggleSms" type="checkbox" class="h-4 w-4">
+                </label>
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Require Face for Check-in</span>
+                    <input id="toggleFaceOnly" type="checkbox" class="h-4 w-4" checked>
+                </label>
+            </div>
 
-<div class="settings-section">
-    <h3>Face Recognition Settings</h3>
-    <div class="setting-item">
-        <label>Confidence Threshold</label>
-        <input type="number" min="0" max="100" value="50">
-    </div>
-    <div class="setting-item">
-        <label>Training Time (Hour)</label>
-        <input type="number" min="0" max="23" value="23">
-    </div>
-    <button onclick="saveSettings()">Save Changes</button>
-</div>
+            <div class="flex justify-end">
+                <button id="saveSettingsBtn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">Save Settings</button>
+            </div>
+        </div>
+    </article>
 
-<div class="settings-section">
-    <h3>System Status</h3>
-    <p>Database: <strong>Connected</strong></p>
-    <p>Face Models: <strong>Loaded</strong></p>
-    <p>Scheduler: <strong>Running</strong></p>
-</div>
+    <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+        <h2 class="font-semibold">System Health</h2>
+        <div class="mt-4 space-y-2 text-sm">
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600">API Status</span>
+                <span id="apiStatus" class="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-700">Checking</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600">Database</span>
+                <span id="dbStatus" class="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-700">Checking</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600">Last Sync</span>
+                <span id="lastSync" class="text-slate-500">--</span>
+            </div>
+        </div>
 
+        <div class="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3 text-xs text-indigo-700">
+            Health checks run against /api/health to validate API and database connectivity.
+        </div>
+    </article>
+</section>
+{% endblock %}
+
+{% block page_scripts %}
 <script>
-    function saveSettings() {
-        alert('Settings saved successfully!');
+    const settingsKey = 'attendance-ui-settings';
+
+    function readSettings() {
+        try {
+            return JSON.parse(localStorage.getItem(settingsKey) || '{}');
+        } catch {
+            return {};
+        }
     }
+
+    function writeSettings(payload) {
+        localStorage.setItem(settingsKey, JSON.stringify(payload));
+    }
+
+    function loadFormFromStorage() {
+        const data = readSettings();
+        Object.entries(data).forEach(([key, value]) => {
+            const el = document.getElementById(key);
+            if (!el) {
+                return;
+            }
+            if (el.type === 'checkbox') {
+                el.checked = Boolean(value);
+            } else {
+                el.value = value;
+            }
+        });
+    }
+
+    function saveSettings() {
+        const payload = {
+            schoolName: document.getElementById('schoolName').value,
+            lateThreshold: document.getElementById('lateThreshold').value,
+            schoolStart: document.getElementById('schoolStart').value,
+            schoolEnd: document.getElementById('schoolEnd').value,
+            toggleAutoTrain: document.getElementById('toggleAutoTrain').checked,
+            toggleSms: document.getElementById('toggleSms').checked,
+            toggleFaceOnly: document.getElementById('toggleFaceOnly').checked
+        };
+        writeSettings(payload);
+        notify('Settings saved locally', 'success');
+    }
+
+    async function checkHealth() {
+        try {
+            const health = await apiFetch('/api/health');
+            const apiStatus = document.getElementById('apiStatus');
+            const dbStatus = document.getElementById('dbStatus');
+            apiStatus.className = 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700';
+            dbStatus.className = health.database === 'connected'
+                ? 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700'
+                : 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700';
+            apiStatus.textContent = 'Online';
+            dbStatus.textContent = health.database || 'Unknown';
+            document.getElementById('lastSync').textContent = new Date().toLocaleTimeString();
+        } catch {
+            const apiStatus = document.getElementById('apiStatus');
+            const dbStatus = document.getElementById('dbStatus');
+            apiStatus.className = 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700';
+            dbStatus.className = 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700';
+            apiStatus.textContent = 'Offline';
+            dbStatus.textContent = 'Unknown';
+        }
+    }
+
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+
+    loadFormFromStorage();
+    checkHealth();
 </script>
 {% endblock %}

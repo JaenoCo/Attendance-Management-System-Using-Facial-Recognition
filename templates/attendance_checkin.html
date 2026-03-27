@@ -3,870 +3,272 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Attendance Check-in - Facial Recognition</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 700px;
-            width: 100%;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 40px 30px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            font-size: 16px;
-            opacity: 0.9;
-        }
-        
-        .content {
-            padding: 40px 30px;
-        }
-        
-        .form-group {
-            margin-bottom: 25px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 600;
-            font-size: 16px;
-        }
-        
-        .input-group {
-            position: relative;
-            display: flex;
-        }
-        
-        .submit-btn {
-            padding: 15px 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            width: 100%;
-            margin-top: 10px;
-        }
-        
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        
-        .submit-btn:active {
-            transform: translateY(0);
-        }
-        
-        .submit-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .video-container {
-            display: none;
-            margin-top: 30px;
-            padding: 20px;
-            background: #f5f5f5;
-            border-radius: 8px;
-        }
-        
-        .video-container.active {
-            display: block;
-        }
-        
-        #videoFeed {
-            width: 100%;
-            border-radius: 8px;
-            background: #000;
-            margin-bottom: 15px;
-            height: auto;
-        }
-
-        .video-frame {
-            position: relative;
-            width: 100%;
-            margin-bottom: 15px;
-        }
-
-        #overlayCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            border-radius: 8px;
-        }
-        
-        .video-info {
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 15px;
-        }
-        
-        .video-info span {
-            font-weight: 600;
-            color: #667eea;
-        }
-        
-        .welcome-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            animation: fadeIn 0.3s ease-in;
-        }
-        
-        .welcome-overlay.show {
-            display: flex;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .welcome-message {
-            text-align: center;
-            padding: 60px 40px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            animation: slideUp 0.5s ease-out;
-        }
-        
-        @keyframes slideUp {
-            from {
-                transform: translateY(50px);
-                opacity: 0;
+    <title>Attendance Check-in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'sans-serif']
+                    },
+                    boxShadow: {
+                        soft: '0 14px 36px rgba(15, 23, 42, 0.12)'
+                    }
+                }
             }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        .welcome-message h1 {
-            font-size: 48px;
-            color: #667eea;
-            margin-bottom: 20px;
-        }
-        
-        .welcome-message p {
-            font-size: 28px;
-            color: #333;
-            margin-bottom: 10px;
-        }
-        
-        .welcome-message.success h1::before {
-            content: "✓ ";
-            color: #28a745;
-        }
-        
-        .timer-text {
-            font-size: 18px;
-            color: #999;
-            margin-top: 15px;
-        }
-        
-        .message {
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-            text-align: center;
-            font-size: 16px;
-        }
-        
-        .message.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 2px solid #bee5eb;
-            display: block;
-        }
-        
-        .message.success {
-            background: #d4edda;
-            color: #155724;
-            border: 2px solid #c3e6cb;
-            display: block;
-            border-left: 5px solid #28a745;
-        }
-        
-        .message.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 2px solid #f5c6cb;
-            display: block;
-            border-left: 5px solid #dc3545;
-        }
-        
-        .message.warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 2px solid #ffeeba;
-            display: block;
-            border-left: 5px solid #ffc107;
-        }
-        
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .student-info {
-            background: #f5f5f5;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-            display: none;
-            border-left: 4px solid #667eea;
-        }
-        
-        .student-info h2 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
-        
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #ddd;
-        }
-        
-        .info-row:last-child {
-            border-bottom: none;
-        }
-        
-        .info-label {
-            font-weight: 600;
-            color: #666;
-        }
-        
-        .info-value {
-            color: #333;
-            font-weight: 500;
-        }
-        
-        .time-display {
-            font-size: 48px;
-            font-weight: bold;
-            color: #667eea;
-            text-align: center;
-            margin: 20px 0;
-            font-family: 'Courier New', monospace;
-        }
-        
-        .instructions {
-            background: #e7f3ff;
-            color: #004085;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #0066cc;
-            font-size: 14px;
-        }
-        
-        .recognition-status {
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            display: none;
-            text-align: center;
-            font-weight: 600;
-        }
-        
-        .recognition-status.detecting {
-            background: #fff3cd;
-            color: #856404;
-            display: block;
-            border: 1px solid #ffeeba;
-        }
-        
-        .recognition-status.recognized {
-            background: #d4edda;
-            color: #155724;
-            display: block;
-            border: 1px solid #c3e6cb;
-        }
-
-        .recent-logins {
-            margin-top: 20px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .recent-logins h3 {
-            margin: 0;
-            padding: 12px 14px;
-            background: #f5f5f5;
-            color: #333;
-            font-size: 16px;
-        }
-
-        .recent-logins table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }
-
-        .recent-logins th,
-        .recent-logins td {
-            padding: 10px 12px;
-            border-top: 1px solid #eee;
-            text-align: left;
-        }
-
-        .recent-logins th {
-            background: #fafafa;
-            color: #555;
-            font-weight: 600;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .status-badge.success {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-badge.warning {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        @media (max-width: 600px) {
-            .header {
-                padding: 30px 20px;
-            }
-            
-            .header h1 {
-                font-size: 24px;
-            }
-            
-            .content {
-                padding: 30px 20px;
-            }
-            
-            .welcome-message {
-                padding: 40px 20px;
-            }
-            
-            .welcome-message h1 {
-                font-size: 36px;
-            }
-            
-            .welcome-message p {
-                font-size: 20px;
-            }
-        }
-    </style>
+        };
+    </script>
 </head>
-<body>
-    <div class="container">
-        <div class="card">
-            <div class="header">
-                <h1>🎓 Attendance Check-In</h1>
-                <p>Facial Recognition System</p>
-            </div>
-            
-            <div class="content">
-                <div class="instructions">
-                    📖 <strong>Instructions:</strong> Click "Start Face Recognition" to begin. Attendance is marked using camera-only face recognition.
-                </div>
-                
-                <div id="message"></div>
-                
-                <form id="checkinForm">
-                    <button type="submit" class="submit-btn" id="submitBtn">
-                        📹 Start Face Recognition
-                    </button>
-                </form>
-                
-                <!-- Video Feed Container -->
-                <div id="videoContainer" class="video-container">
-                    <div class="video-info">
-                        <p>Camera is scanning your face...</p>
-                        <p>Please look at the camera until you are recognized</p>
-                    </div>
-                    <div class="video-frame">
-                        <video id="videoFeed" autoplay playsinline muted></video>
-                        <canvas id="overlayCanvas"></canvas>
-                    </div>
-                    <canvas id="canvas" style="display:none;"></canvas>
-                    <div class="recognition-status" id="recognitionStatus"></div>
-                    <button type="button" class="submit-btn" id="cancelCameraBtn" onclick="stopCameraAndReset()" style="margin-top: 15px; background: #dc3545;">❌ Cancel & Close Camera</button>
-                </div>
-                
-                <div id="studentInfo"></div>
+<body class="min-h-screen bg-slate-100 text-slate-900 grid place-items-center p-4">
+    <div class="w-full max-w-3xl">
+        <section class="bg-white border border-slate-200 rounded-3xl shadow-soft overflow-hidden">
+            <header class="px-6 py-7 bg-gradient-to-r from-indigo-600 to-sky-600 text-white text-center">
+                <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Attendance Check-In</h1>
+                <p class="text-indigo-100 mt-1 text-sm">Fast facial recognition attendance workflow</p>
+            </header>
 
-                <div class="recent-logins">
-                    <h3>Today Check-ins</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Roll Number</th>
-                                <th>Time</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="checkinTableBody">
-                            <tr id="emptyTableRow">
-                                <td colspan="4">No check-ins yet.</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <div class="p-5 sm:p-6">
+                <div class="rounded-xl border border-sky-100 bg-sky-50 text-sky-700 text-sm px-3 py-2">
+                    Enter a roll number for direct check-in or start face recognition.
                 </div>
+
+                <div id="message" class="hidden mt-3 rounded-xl px-3 py-2 text-sm"></div>
+
+                <form id="checkinForm" class="mt-4 space-y-3">
+                    <div>
+                        <label for="studentId" class="block text-sm font-semibold mb-1">Student ID / Roll Number (Optional)</label>
+                        <input type="text" id="studentId" name="studentId" autocomplete="off" placeholder="e.g. STU-001" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button type="submit" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200" id="submitBtn">Check In Now</button>
+                        <button type="button" class="px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors" id="startFaceBtn">Start Face Recognition</button>
+                    </div>
+                </form>
+
+                <div id="videoContainer" class="hidden mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
+                        <p>Scanning camera feed...</p>
+                        <p id="recognitionStatus">Detecting</p>
+                    </div>
+                    <div class="relative rounded-xl overflow-hidden bg-black">
+                        <video id="videoFeed" autoplay playsinline muted class="w-full"></video>
+                        <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                    </div>
+                    <canvas id="canvas" class="hidden"></canvas>
+                    <button type="button" class="mt-3 w-full px-4 py-2.5 rounded-xl border border-rose-300 text-rose-700 text-sm font-semibold hover:bg-rose-50 transition-colors" onclick="stopCameraAndReset()">Stop Camera</button>
+                </div>
+
+                <div id="studentInfo" class="hidden mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4"></div>
             </div>
-            
-            <div style="text-align: center; padding: 20px; background: #f5f5f5; color: #666; font-size: 12px;">
-                Current Time: <span class="time-display" style="font-size: 18px; margin: 0;">--:--:--</span>
-            </div>
-        </div>
-    </div>
-    
-    <div id="welcomeOverlay" class="welcome-overlay">
-        <div class="welcome-message">
-            <h1>Welcome</h1>
-            <p id="welcomeStudentName">Student Name</p>
-            <div class="timer-text">Marking attendance... <span id="countdownTimer">5</span>s</div>
-        </div>
+
+            <footer class="px-6 py-3 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500">
+                Current Time: <span id="clock" class="font-semibold text-slate-700">--:--:--</span>
+            </footer>
+        </section>
     </div>
 
     <script>
         let videoStream = null;
-        let recognizedStudent = null;
         let recognitionInProgress = false;
         let detectionIntervalId = null;
-        let lastDetectedFaces = [];
-        let detectionInProgress = false;
-        let lastRecognitionAttemptAt = 0;
+        let recognizedStudent = null;
 
-        function resizeOverlayCanvas() {
-            const video = document.getElementById('videoFeed');
-            const overlay = document.getElementById('overlayCanvas');
-            if (!video || !overlay || !video.videoWidth || !video.videoHeight) return;
-
-            overlay.width = video.videoWidth;
-            overlay.height = video.videoHeight;
+        function showMessage(text, type = 'info') {
+            const el = document.getElementById('message');
+            const map = {
+                info: 'bg-sky-50 text-sky-700 border border-sky-100',
+                success: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+                error: 'bg-rose-50 text-rose-700 border border-rose-100',
+                warning: 'bg-amber-50 text-amber-700 border border-amber-100'
+            };
+            el.className = `mt-3 rounded-xl px-3 py-2 text-sm ${map[type] || map.info}`;
+            el.textContent = text;
+            el.classList.remove('hidden');
         }
 
         function drawBoundingBoxes(faces = []) {
+            const video = document.getElementById('videoFeed');
             const overlay = document.getElementById('overlayCanvas');
-            if (!overlay) return;
+            if (!video || !overlay || !video.videoWidth || !video.videoHeight) {
+                return;
+            }
+
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
             const ctx = overlay.getContext('2d');
             ctx.clearRect(0, 0, overlay.width, overlay.height);
 
             faces.forEach(face => {
                 const [startX, startY, endX, endY] = face.box || [];
-                if ([startX, startY, endX, endY].some(v => typeof v !== 'number')) return;
-
+                if ([startX, startY, endX, endY].some(v => typeof v !== 'number')) {
+                    return;
+                }
                 const confidence = Number(face.confidence || 0);
-                const isStrong = confidence >= 0.5;
-                const color = isStrong ? '#00ff66' : '#ff9800';
-                const label = `Face ${(confidence * 100).toFixed(1)}%`;
+                const color = confidence >= 0.5 ? '#22c55e' : '#f59e0b';
+                const label = face.name
+                    ? `${face.name} ${(confidence * 100).toFixed(1)}%`
+                    : `Face ${(confidence * 100).toFixed(1)}%`;
 
                 ctx.strokeStyle = color;
                 ctx.lineWidth = 2;
                 ctx.strokeRect(startX, startY, endX - startX, endY - startY);
-
                 ctx.fillStyle = color;
-                ctx.font = '14px Segoe UI';
-                const textY = startY - 8 > 14 ? startY - 8 : startY + 18;
-                ctx.fillText(label, startX, textY);
+                ctx.font = 'bold 13px Manrope';
+                const y = startY - 8 > 14 ? startY - 8 : startY + 18;
+                ctx.fillText(label, startX, y);
             });
         }
-        
-        // Clean up on page unload
-        window.addEventListener('beforeunload', () => {
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-            }
-        });
 
-        window.addEventListener('resize', () => {
-            resizeOverlayCanvas();
-            drawBoundingBoxes(lastDetectedFaces);
-        });
-        
-        // Update time display
-        function updateTime() {
-            const now = new Date();
-            const timeDisplay = document.querySelector('.time-display');
-            if (timeDisplay) {
-                timeDisplay.textContent = now.toLocaleTimeString('en-PK');
+        async function directCheckin(studentIdValue) {
+            const formData = new FormData();
+            formData.append('student_id', studentIdValue);
+
+            const response = await fetch('/api/attendance/checkin', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (!response.ok || data.status === 'error') {
+                throw new Error(data.message || 'Check-in failed');
             }
+
+            if (data.status === 'warning') {
+                showMessage(data.message || 'Already present', 'warning');
+            } else {
+                showMessage(data.message || 'Attendance marked', 'success');
+            }
+
+            renderStudentInfo(data.student || null);
         }
-        setInterval(updateTime, 1000);
-        updateTime();
-        
-        // Handle form submission
-        document.getElementById('checkinForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await startFaceRecognition();
-        });
-        
-        async function startFaceRecognition() {
-            const submitBtn = document.getElementById('submitBtn');
-            const videoContainer = document.getElementById('videoContainer');
 
-            if (videoStream || recognitionInProgress) {
-                showMessage('Camera is already running.', 'info');
+        function renderStudentInfo(student) {
+            const info = document.getElementById('studentInfo');
+            if (!student) {
+                info.classList.add('hidden');
+                info.innerHTML = '';
                 return;
             }
-            
-            submitBtn.disabled = true;
-            videoContainer.classList.add('active');
-            recognizedStudent = null;
-            lastDetectedFaces = [];
-            
-            try {
-                // Request camera access
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 640, height: 480 },
-                    audio: false
-                });
-                
-                videoStream = stream;
-                const video = document.getElementById('videoFeed');
-                video.srcObject = stream;
-                
-                // Wait for video to be ready
-                await new Promise(resolve => {
-                    video.onloadedmetadata = resolve;
-                });
-                await video.play();
-                resizeOverlayCanvas();
-                video.onresize = () => {
-                    resizeOverlayCanvas();
-                    drawBoundingBoxes(lastDetectedFaces);
-                };
-                
-                // Start face recognition
-                startFaceDetectionLoop();
-                
-            } catch (error) {
-                if (error.name === 'NotAllowedError') {
-                    showMessage('❌ Camera access denied. Please allow camera permissions.', 'error');
-                } else if (error.name === 'NotFoundError') {
-                    showMessage('❌ No camera found. Please connect a camera.', 'error');
-                } else {
-                    showMessage('❌ Error accessing camera: ' + error.message, 'error');
-                }
-                submitBtn.disabled = false;
-                videoContainer.classList.remove('active');
-            }
-        }
-        
-        function startFaceDetectionLoop() {
-            const video = document.getElementById('videoFeed');
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            const recognitionStatus = document.getElementById('recognitionStatus');
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            resizeOverlayCanvas();
-            
-            detectionIntervalId = setInterval(async () => {
-                if (!videoStream) {
-                    clearInterval(detectionIntervalId);
-                    return;
-                }
 
-                if (recognitionInProgress) {
-                    recognitionStatus.className = 'recognition-status detecting';
-                    recognitionStatus.textContent = '🔍 Face detected, identifying...';
-                    drawBoundingBoxes(lastDetectedFaces);
-                    return;
-                }
-                
-                // Capture frame from video
+            info.classList.remove('hidden');
+            info.innerHTML = `
+                <h2 class="text-sm font-semibold text-emerald-800 mb-2">Attendance Marked</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                    <div><span class="text-emerald-700/80">Name:</span> <span class="font-medium">${student.name || '--'}</span></div>
+                    <div><span class="text-emerald-700/80">Roll:</span> <span class="font-medium">${student.roll_number || '--'}</span></div>
+                    <div><span class="text-emerald-700/80">Time:</span> <span class="font-medium">${student.time || new Date().toLocaleTimeString()}</span></div>
+                </div>
+            `;
+        }
+
+        async function recognizeCurrentFrame() {
+            if (recognitionInProgress || !videoStream) {
+                return;
+            }
+
+            const video = document.getElementById('videoFeed');
+            if (!video || !video.videoWidth || !video.videoHeight) {
+                return;
+            }
+
+            recognitionInProgress = true;
+            try {
+                const canvas = document.getElementById('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 const imageData = canvas.toDataURL('image/jpeg');
 
-                const detectedFaces = await detectFacesOnly(imageData);
-                lastDetectedFaces = detectedFaces;
-                drawBoundingBoxes(lastDetectedFaces);
-
-                recognitionStatus.className = 'recognition-status detecting';
-                recognitionStatus.textContent = '🔍 Scanning face...';
-
-                if (!detectedFaces.length) {
-                    return;
-                }
-
-                const now = Date.now();
-                if (now - lastRecognitionAttemptAt < 1200) {
-                    return;
-                }
-                lastRecognitionAttemptAt = now;
-
-                const result = await recognizeFace(imageData);
-                if (result && Array.isArray(result.faces)) {
-                    lastDetectedFaces = result.faces;
-                }
-                drawBoundingBoxes(lastDetectedFaces);
-            }, 500); // Capture every 500ms
-        }
-
-        async function detectFacesOnly(imageData) {
-            if (detectionInProgress) {
-                return lastDetectedFaces;
-            }
-
-            detectionInProgress = true;
-            try {
-                const response = await fetch('/api/face/detect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: imageData })
-                });
-
-                const data = await response.json().catch(() => ({}));
-                return Array.isArray(data.faces) ? data.faces : [];
-            } catch (error) {
-                return [];
-            } finally {
-                detectionInProgress = false;
-            }
-        }
-        
-        async function recognizeFace(imageData) {
-            if (recognizedStudent) return { faces: lastDetectedFaces };
-            if (recognitionInProgress) return { faces: lastDetectedFaces };
-            
-            recognitionInProgress = true;
-            
-            try {
                 const response = await fetch('/api/attendance/recognize-face', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: imageData })
                 });
-                
+
                 const data = await response.json();
-                
-                if (data.status === 'success' && data.student) {
+                drawBoundingBoxes(data.faces || []);
+
+                const status = document.getElementById('recognitionStatus');
+                if (data.recognized && data.student) {
                     recognizedStudent = data.student;
-                    handleFaceRecognized(data.student);
+                    status.textContent = `Recognized: ${data.student.name}`;
+                    await directCheckin(data.student.roll_number || data.student.id);
+                    stopCameraAndReset();
+                } else if (data.detected || (data.faces && data.faces.length)) {
+                    status.textContent = 'Face detected';
+                } else {
+                    status.textContent = 'Scanning...';
                 }
-                return data;
             } catch (error) {
-                console.error('Face recognition error:', error);
-                return { faces: lastDetectedFaces };
+                document.getElementById('recognitionStatus').textContent = 'Recognition unavailable';
             } finally {
                 recognitionInProgress = false;
             }
         }
-        
-        async function handleFaceRecognized(student) {
-            // Stop video
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-                videoStream = null;
-            }
-            
-            const videoContainer = document.getElementById('videoContainer');
-            videoContainer.classList.remove('active');
-            
-            // Show welcome overlay
-            const welcomeOverlay = document.getElementById('welcomeOverlay');
-            const welcomeName = document.getElementById('welcomeStudentName');
-            welcomeName.textContent = student.name;
-            
-            welcomeOverlay.classList.add('show');
-            
-            // Update countdown
-            let countdown = 5;
-            const countdownElement = document.getElementById('countdownTimer');
-            
-            const countdownInterval = setInterval(() => {
-                countdown--;
-                countdownElement.textContent = countdown;
-                
-                if (countdown === 0) {
-                    clearInterval(countdownInterval);
-                    
-                    // Mark attendance after 5 seconds
-                    markAttendance(student.id);
-                    welcomeOverlay.classList.remove('show');
-                }
-            }, 1000);
-        }
-        
-        async function markAttendance(studentId) {
-            const messageDiv = document.getElementById('message');
-            
+
+        async function startCameraAndRecognition() {
             try {
-                const formData = new FormData();
-                formData.append('student_id', studentId);
-                
-                const response = await fetch('/api/attendance/checkin', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    appendCheckinTableRow(data.student, new Date().toLocaleTimeString('en-PK'), 'Checked in', 'success');
-                    messageDiv.className = 'message success';
-                    messageDiv.innerHTML = `
-                        <h3>✅ Attendance Marked!</h3>
-                        <div class="student-info" style="display: block; margin-top: 15px;">
-                            <h2>${data.student.name}</h2>
-                            <div class="info-row">
-                                <span class="info-label">Roll Number:</span>
-                                <span class="info-value">${data.student.roll_number}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Check-In Time:</span>
-                                <span class="info-value">${new Date().toLocaleTimeString('en-PK')}</span>
-                            </div>
-                        </div>
-                    `;
-                    messageDiv.style.display = 'block';
-                    
-                    // Reset form after 3 seconds
-                    setTimeout(() => {
-                        resetRecognition();
-                    }, 3000);
-                } else if (data.status === 'warning') {
-                    if (data.student) {
-                        appendCheckinTableRow(data.student, new Date().toLocaleTimeString('en-PK'), 'Already marked', 'warning');
-                    }
-                    showMessage('⚠️ ' + (data.message || 'Student already marked today'), 'warning');
-                    resetRecognition();
-                } else {
-                    showMessage('❌ ' + (data.message || 'Failed to mark attendance'), 'error');
-                    resetRecognition();
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                videoStream = stream;
+                const video = document.getElementById('videoFeed');
+                video.srcObject = stream;
+                await video.play();
+
+                document.getElementById('videoContainer').classList.remove('hidden');
+                showMessage('Camera started. Looking for a recognizable face...', 'info');
+
+                if (detectionIntervalId) {
+                    clearInterval(detectionIntervalId);
                 }
+                detectionIntervalId = setInterval(recognizeCurrentFrame, 1200);
             } catch (error) {
-                showMessage('❌ Error: ' + error.message, 'error');
-                resetRecognition();
+                showMessage(`Camera error: ${error.message}`, 'error');
             }
         }
-        
-        function resetRecognition() {
+
+        function stopCameraAndReset() {
             if (detectionIntervalId) {
                 clearInterval(detectionIntervalId);
                 detectionIntervalId = null;
             }
-
-            drawBoundingBoxes([]);
-            
-            document.getElementById('checkinForm').reset();
-            document.getElementById('videoContainer').classList.remove('active');
-            document.getElementById('studentInfo').innerHTML = '';
-            document.getElementById('submitBtn').disabled = false;
-            recognizedStudent = null;
-            recognitionInProgress = false;
-            lastDetectedFaces = [];
-            detectionInProgress = false;
-            lastRecognitionAttemptAt = 0;
-            
             if (videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
                 videoStream = null;
             }
-        }
-        
-        function stopCameraAndReset() {
-            resetRecognition();
-            showMessage('Camera closed. Try again or change settings.', 'warning');
-        }
-        
-        function showMessage(message, type) {
-            const messageDiv = document.getElementById('message');
-            messageDiv.className = `message ${type}`;
-            messageDiv.textContent = message;
-            messageDiv.style.display = 'block';
+            document.getElementById('videoContainer').classList.add('hidden');
+            document.getElementById('recognitionStatus').textContent = 'Detecting';
+            drawBoundingBoxes([]);
         }
 
-        function appendCheckinTableRow(student, timeText, statusText, statusType) {
-            const tableBody = document.getElementById('checkinTableBody');
-            const emptyRow = document.getElementById('emptyTableRow');
-            if (!tableBody) return;
-            if (emptyRow) {
-                emptyRow.remove();
+        document.getElementById('checkinForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const studentIdValue = document.getElementById('studentId').value.trim();
+            if (!studentIdValue) {
+                showMessage('Enter Student ID/Roll Number or use face recognition.', 'warning');
+                return;
             }
+            try {
+                await directCheckin(studentIdValue);
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+        });
 
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${student.name || '-'}</td>
-                <td>${student.roll_number || '-'}</td>
-                <td>${timeText || '-'}</td>
-                <td><span class="status-badge ${statusType}">${statusText}</span></td>
-            `;
+        document.getElementById('startFaceBtn').addEventListener('click', async () => {
+            await startCameraAndRecognition();
+        });
 
-            tableBody.prepend(row);
-        }
+        setInterval(() => {
+            document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+        }, 1000);
+
+        window.addEventListener('beforeunload', stopCameraAndReset);
     </script>
 </body>
 </html>

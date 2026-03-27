@@ -4,121 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Attendance System</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .login-container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-            width: 100%;
-            max-width: 400px;
-        }
-        .login-container h1 {
-            text-align: center;
-            margin-bottom: 10px;
-            color: #333;
-        }
-        .login-container p {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 500;
-        }
-        input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border: 1px solid #f5c6cb;
-        }
-        .demo-credentials {
-            background: #e7f3ff;
-            padding: 12px;
-            border-radius: 5px;
-            margin-top: 20px;
-            font-size: 12px;
-            color: #004085;
-        }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
 </head>
-<body>
-    <div class="login-container">
-        <h1>🎓 Attendance System</h1>
-        <p>Login to continue</p>
-        
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-        
-        <form method="post" action="/login">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autofocus>
+<body class="min-h-screen bg-slate-100 relative overflow-hidden">
+    <div class="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-indigo-200/50 blur-3xl"></div>
+    <div class="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-sky-200/50 blur-3xl"></div>
+    <div class="min-h-screen grid place-items-center p-4">
+        <div class="w-full max-w-md">
+            <div class="mb-6 text-center">
+                <div class="mx-auto h-14 w-14 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-xl font-bold shadow-sm">AS</div>
+                <h1 class="mt-4 text-2xl font-semibold text-slate-900">Attendance System</h1>
+                <p class="mt-1 text-sm text-slate-500">Sign in to School Attendance Management</p>
             </div>
-            
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+
+            <div class="bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-200 p-6 sm:p-8">
+                {% if error %}
+                <div class="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{{ error }}</div>
+                {% endif %}
+
+                <form method="post" action="/login" class="space-y-4">
+                    <div>
+                        <label for="username" class="block mb-1 text-sm font-medium text-slate-700">Username</label>
+                        <input type="text" id="username" name="username" required autofocus class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition-shadow">
+                    </div>
+
+                    <div>
+                        <label for="password" class="block mb-1 text-sm font-medium text-slate-700">Password</label>
+                        <input type="password" id="password" name="password" required class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition-shadow">
+                    </div>
+
+                    <button type="submit" class="w-full inline-flex items-center justify-center rounded-xl bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 shadow-md shadow-indigo-500/20 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all">
+                        Login
+                    </button>
+                </form>
+
+                <div class="mt-5 rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600">
+                    <p class="font-semibold text-slate-700">Demo Credentials</p>
+                    <p class="mt-1">Username: admin</p>
+                    <p>Password: admin123</p>
+                </div>
             </div>
-            
-            <button type="submit">Login</button>
-        </form>
-        
-        <div class="demo-credentials">
-            <strong>Demo Credentials:</strong><br>
-            Username: <code>admin</code><br>
-            Password: <code>admin123</code>
         </div>
     </div>
 </body>
