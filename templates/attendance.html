@@ -1,94 +1,145 @@
 {% extends "base.html" %}
 
 {% block title %}Attendance - Attendance System{% endblock %}
+{% block page_name %}attendance{% endblock %}
+{% block page_header %}Attendance{% endblock %}
 
 {% block content %}
-<h2>📍 Attendance Records</h2>
+<section class="bg-white/95 border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <input id="attendanceDate" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+            <select id="attendanceStatus" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                <option value="">All Status</option>
+                <option value="present">Present</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+            </select>
+        </div>
+        <button id="refreshAttendance" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582M20 20v-5h-.581M5.203 9A7.5 7.5 0 0119.5 12.5M18.797 15A7.5 7.5 0 014.5 11.5"/></svg>
+            Refresh
+        </button>
+    </div>
 
-<style>
-    .filters {
-        background: #f5f5f5;
-        padding: 15px;
-        border-radius: 5px;
-        margin-bottom: 20px;
-    }
-    .filters input, .filters select {
-        padding: 8px;
-        margin-right: 10px;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-    }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    th, td {
-        padding: 12px;
-        text-align: left;
-        border-bottom: 1px solid #ddd;
-    }
-    th {
-        background: #f5f5f5;
-        font-weight: 600;
-    }
-</style>
-
-<div class="filters">
-    <input type="date" id="dateFilter" onchange="filterAttendance()">
-    <select id="statusFilter" onchange="filterAttendance()">
-        <option value="">All Status</option>
-        <option value="present">Present</option>
-        <option value="absent">Absent</option>
-        <option value="late">Late</option>
-    </select>
-    <button onclick="loadAttendance()" style="padding: 8px 15px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh</button>
-</div>
-
-<table>
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Student</th>
-            <th>Roll Number</th>
-            <th>Entry Time</th>
-            <th>Status</th>
-        </tr>
-    </thead>
-    <tbody id="attendanceList">
-        <tr><td colspan="5" style="text-align: center;">Loading attendance records...</td></tr>
-    </tbody>
-</table>
-
-<script>
-    async function loadAttendance() {
-        try {
-            const response = await fetch('/api/attendance/today');
-            const data = await response.json();
-            
-            const tbody = document.getElementById('attendanceList');
-            if (!data.attendance || data.attendance.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No records found</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = data.attendance.map(record => `
+    <div class="mt-4 overflow-x-auto">
+        <table class="min-w-full text-sm border-separate border-spacing-y-2">
+            <thead class="bg-slate-50 text-slate-600">
                 <tr>
-                    <td>${record.date}</td>
-                    <td>${record.first_name} ${record.last_name}</td>
-                    <td>${record.roll_number}</td>
-                    <td>${record.entry_time || '-'}</td>
-                    <td>${record.status}</td>
+                    <th class="text-left px-4 py-3 font-medium">Student</th>
+                    <th class="text-left px-4 py-3 font-medium">Roll Number</th>
+                    <th class="text-left px-4 py-3 font-medium">Class</th>
+                    <th class="text-left px-4 py-3 font-medium">Entry Time</th>
+                    <th class="text-left px-4 py-3 font-medium">Exit Time</th>
+                    <th class="text-left px-4 py-3 font-medium">Status</th>
                 </tr>
-            `).join('');
-        } catch (error) {
-            console.error('Error:', error);
+            </thead>
+            <tbody id="attendanceBody">
+                <tr>
+                    <td class="px-4 py-3" colspan="6"><div class="skeleton h-11 rounded-xl"></div></td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3" colspan="6"><div class="skeleton h-11 rounded-xl"></div></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_scripts %}
+<script>
+    const attendanceState = {
+        rows: []
+    };
+
+    function formatTime(value) {
+        if (!value) {
+            return '--';
+        }
+        try {
+            return new Date(value).toLocaleTimeString();
+        } catch {
+            return value;
         }
     }
-    
-    function filterAttendance() {
-        // Filter logic here
+
+    function renderAttendance() {
+        const statusFilter = document.getElementById('attendanceStatus').value;
+        const filtered = attendanceState.rows.filter((row) => {
+            if (!statusFilter) {
+                return true;
+            }
+            return String(row.status || '').toLowerCase() === statusFilter;
+        });
+
+        const rows = filtered.map((row) => {
+            const student = `${row.first_name || ''} ${row.last_name || ''}`.trim() || '--';
+            const status = String(row.status || 'pending').toLowerCase();
+            return `
+                <tr class="hover:-translate-y-0.5 transition-transform duration-200">
+                    <td class="px-4 py-3 font-medium bg-slate-50 rounded-l-xl border-y border-l border-slate-200">${student}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${row.roll_number || '--'}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${row.class_name || '--'}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${formatTime(row.entry_time)}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${formatTime(row.exit_time)}</td>
+                    <td class="px-4 py-3 bg-slate-50 rounded-r-xl border-y border-r border-slate-200"><span class="inline-flex px-2 py-1 text-xs rounded-full font-medium ${statusBadge(status)}">${status}</span></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('attendanceBody').innerHTML = rows.length
+            ? rows.join('')
+            : '<tr><td class="px-4 py-4 text-slate-500" colspan="6">No attendance data for selected filter.</td></tr>';
     }
-    
-    loadAttendance();
+
+    async function loadAttendance() {
+        const selectedDate = document.getElementById('attendanceDate').value;
+        const today = new Date().toISOString().slice(0, 10);
+
+        // The API currently supports detailed daily list for today only.
+        if (selectedDate && selectedDate !== today) {
+            attendanceState.rows = [];
+            renderAttendance();
+            notify('Showing real-time records for today only in this view.', 'info');
+            return;
+        }
+
+        attendanceState.rows = await apiFetch('/api/attendance/today');
+        renderAttendance();
+    }
+
+    document.getElementById('attendanceDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('refreshAttendance').addEventListener('click', async () => {
+        try {
+            await loadAttendance();
+            notify('Attendance updated', 'success');
+        } catch (err) {
+            notify(`Refresh failed: ${err.message}`, 'error');
+        }
+    });
+    document.getElementById('attendanceStatus').addEventListener('change', renderAttendance);
+    document.getElementById('attendanceDate').addEventListener('change', async () => {
+        try {
+            await loadAttendance();
+        } catch (err) {
+            notify(`Date filter failed: ${err.message}`, 'error');
+        }
+    });
+
+    (async function init() {
+        try {
+            await loadAttendance();
+            setInterval(async () => {
+                try {
+                    await loadAttendance();
+                } catch {
+                    // Keep background refresh silent.
+                }
+            }, 25000);
+        } catch (err) {
+            notify(`Failed loading attendance: ${err.message}`, 'error');
+        }
+    })();
 </script>
 {% endblock %}

@@ -1,109 +1,207 @@
 {% extends "base.html" %}
 
 {% block title %}Students - Attendance System{% endblock %}
+{% block page_name %}students{% endblock %}
+{% block page_header %}Students{% endblock %}
 
 {% block content %}
-<style>
-    .search-bar {
-        margin-bottom: 20px;
-    }
-    .search-bar input {
-        width: 300px;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-    }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    th, td {
-        padding: 12px;
-        text-align: left;
-        border-bottom: 1px solid #ddd;
-    }
-    th {
-        background: #f5f5f5;
-        font-weight: 600;
-    }
-    tr:hover {
-        background: #f9f9f9;
-    }
-</style>
+<section class="bg-white/95 border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+        <div class="relative w-full sm:max-w-sm">
+            <input id="studentSearch" type="text" placeholder="Search by name, roll number or class" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+            <svg class="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m1.85-4.65a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/></svg>
+        </div>
+        <button id="addStudentBtn" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Add Student
+        </button>
+    </div>
 
-<h2>👥 Students Management</h2>
-
-<div class="search-bar">
-    <input type="text" id="searchInput" placeholder="Search by name or ID..." onkeyup="searchStudents()">
-</div>
-
-<table id="studentsTable">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Roll Number</th>
-            <th>Name</th>
-            <th>Class</th>
-            <th>Training Status</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody id="studentsList">
-        <tr><td colspan="6" style="text-align: center;">Loading students...</td></tr>
-    </tbody>
-</table>
-
-<script>
-    async function loadStudents() {
-        try {
-            const response = await fetch('/api/students');
-            const students = await response.json();
-            
-            const tbody = document.getElementById('studentsList');
-            if (students.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students found</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = students.map(s => `
+    <div class="mt-4 overflow-x-auto">
+        <table class="min-w-full text-sm border-separate border-spacing-y-2">
+            <thead class="bg-slate-50 text-slate-600">
                 <tr>
-                    <td>${s.student_id}</td>
-                    <td>${s.roll_number}</td>
-                    <td>${s.first_name} ${s.last_name}</td>
-                    <td>${s.class_name || '-'}</td>
-                    <td><span style="background: ${s.face_training_status === 'trained' ? '#d4edda' : '#ffeaa7'}; padding: 4px 8px; border-radius: 3px;">
-                        ${s.face_training_status === 'trained' ? '✓ Trained' : '⏳ Pending'}
-                    </span></td>
-                    <td>
-                        <a href="#" onclick="editStudent(${s.student_id})">Edit</a> | 
-                        <a href="#" onclick="deleteStudent(${s.student_id})">Delete</a>
-                    </td>
+                    <th class="text-left px-4 py-3 font-medium">Name</th>
+                    <th class="text-left px-4 py-3 font-medium">ID</th>
+                    <th class="text-left px-4 py-3 font-medium">Class</th>
+                    <th class="text-left px-4 py-3 font-medium">Status</th>
+                    <th class="text-left px-4 py-3 font-medium">Actions</th>
                 </tr>
-            `).join('');
-        } catch (error) {
-            console.error('Error loading students:', error);
+            </thead>
+            <tbody id="studentsTableBody">
+                <tr>
+                    <td class="px-4 py-3" colspan="5"><div class="skeleton h-11 rounded-xl"></div></td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3" colspan="5"><div class="skeleton h-11 rounded-xl"></div></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div id="studentModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/50"></div>
+    <div class="relative min-h-full flex items-center justify-center p-4">
+        <div class="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-soft p-5">
+            <div class="flex items-center justify-between">
+                <h3 id="studentModalTitle" class="text-lg font-semibold">Add Student</h3>
+                <button id="closeStudentModal" class="h-8 w-8 rounded-lg border border-slate-200 hover:bg-slate-50">x</button>
+            </div>
+
+            <form id="studentForm" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input id="studentIdHidden" type="hidden">
+                <div>
+                    <label class="block text-sm mb-1">First Name</label>
+                    <input id="firstName" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm mb-1">Last Name</label>
+                    <input id="lastName" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm mb-1">Roll Number</label>
+                    <input id="rollNumber" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm mb-1">Class</label>
+                    <select id="classId" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
+                </div>
+                <div class="sm:col-span-2 flex justify-end gap-2 mt-2">
+                    <button type="button" id="cancelStudentForm" class="px-4 py-2 rounded-xl border border-slate-300 text-sm hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm hover:bg-indigo-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script>
+    const studentState = {
+        students: [],
+        classes: [],
+        mode: 'create'
+    };
+
+    function openStudentModal(mode, student = null) {
+        studentState.mode = mode;
+        document.getElementById('studentModalTitle').textContent = mode === 'create' ? 'Add Student' : 'Edit Student';
+        document.getElementById('studentModal').classList.remove('hidden');
+
+        document.getElementById('studentIdHidden').value = student ? student.student_id : '';
+        document.getElementById('firstName').value = student ? (student.first_name || '') : '';
+        document.getElementById('lastName').value = student ? (student.last_name || '') : '';
+        document.getElementById('rollNumber').value = student ? (student.roll_number || '') : '';
+        document.getElementById('classId').value = student && student.class_id ? String(student.class_id) : '';
+    }
+
+    function closeStudentModal() {
+        document.getElementById('studentModal').classList.add('hidden');
+        document.getElementById('studentForm').reset();
+    }
+
+    function renderStudents() {
+        const query = document.getElementById('studentSearch').value.trim().toLowerCase();
+        const rows = studentState.students
+            .filter((student) => {
+                const searchable = `${student.first_name || ''} ${student.last_name || ''} ${student.roll_number || ''} ${student.class_name || ''}`.toLowerCase();
+                return searchable.includes(query);
+            })
+            .map((student) => {
+                const status = String(student.face_training_status || 'pending').toLowerCase();
+                const label = status === 'trained' ? 'trained' : 'pending';
+                return `
+                    <tr class="hover:-translate-y-0.5 transition-transform duration-200">
+                        <td class="px-4 py-3 font-medium bg-slate-50 rounded-l-xl border-y border-l border-slate-200">${student.first_name || ''} ${student.last_name || ''}</td>
+                        <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${student.roll_number || '--'}</td>
+                        <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${student.class_name || '--'}</td>
+                        <td class="px-4 py-3 bg-slate-50 border-y border-slate-200"><span class="inline-flex px-2 py-1 text-xs rounded-full font-medium ${statusBadge(label)}">${label}</span></td>
+                        <td class="px-4 py-3 bg-slate-50 rounded-r-xl border-y border-r border-slate-200">
+                            <div class="flex gap-2">
+                                <button class="px-2 py-1 text-xs rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors" onclick="handleEditStudent(${student.student_id})">Edit</button>
+                                <button class="px-2 py-1 text-xs rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 transition-colors" onclick="handleDeleteStudent(${student.student_id})">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+        document.getElementById('studentsTableBody').innerHTML = rows.length
+            ? rows.join('')
+            : '<tr><td class="px-4 py-4 text-slate-500" colspan="5">No students found.</td></tr>';
+    }
+
+    async function loadClasses() {
+        const classes = await apiFetch('/api/classes');
+        studentState.classes = Array.isArray(classes) ? classes : [];
+        const options = ['<option value="">Select class</option>'].concat(studentState.classes.map((cls) => `<option value="${cls.class_id}">${cls.class_name}</option>`));
+        document.getElementById('classId').innerHTML = options.join('');
+    }
+
+    async function loadStudents() {
+        studentState.students = await apiFetch('/api/students');
+        renderStudents();
+    }
+
+    async function handleCreateOrUpdateStudent(event) {
+        event.preventDefault();
+        const id = document.getElementById('studentIdHidden').value;
+        const payload = new FormData();
+        payload.append('first_name', document.getElementById('firstName').value.trim());
+        payload.append('last_name', document.getElementById('lastName').value.trim());
+        payload.append('roll_number', document.getElementById('rollNumber').value.trim());
+        payload.append('class_id', document.getElementById('classId').value);
+
+        if (studentState.mode === 'create') {
+            await apiFetch('/api/students', { method: 'POST', body: payload });
+            notify('Student added successfully', 'success');
+        } else {
+            await apiFetch(`/api/students/${id}`, { method: 'PUT', body: payload });
+            notify('Student updated successfully', 'success');
         }
+
+        closeStudentModal();
+        await loadStudents();
     }
-    
-    function searchStudents() {
-        const filter = document.getElementById('searchInput').value.toLowerCase();
-        const rows = document.querySelectorAll('#studentsList tr');
-        rows.forEach(row => {
-            row.style.display = row.textContent.toLowerCase().includes(filter) ? '' : 'none';
-        });
-    }
-    
-    function editStudent(id) {
-        alert('Edit student: ' + id);
-    }
-    
-    function deleteStudent(id) {
-        if (confirm('Are you sure?')) {
-            alert('Delete student: ' + id);
+
+    function handleEditStudent(studentId) {
+        const student = studentState.students.find((item) => Number(item.student_id) === Number(studentId));
+        if (!student) {
+            notify('Student not found', 'error');
+            return;
         }
+        openStudentModal('edit', student);
     }
-    
-    loadStudents();
-    setInterval(loadStudents, 30000);
+
+    async function handleDeleteStudent(studentId) {
+        if (!confirm('Delete this student record?')) {
+            return;
+        }
+        await apiFetch(`/api/students/${studentId}`, { method: 'DELETE' });
+        notify('Student deleted', 'success');
+        await loadStudents();
+    }
+
+    document.getElementById('addStudentBtn').addEventListener('click', () => openStudentModal('create'));
+    document.getElementById('closeStudentModal').addEventListener('click', closeStudentModal);
+    document.getElementById('cancelStudentForm').addEventListener('click', closeStudentModal);
+    document.getElementById('studentSearch').addEventListener('input', renderStudents);
+    document.getElementById('studentForm').addEventListener('submit', async (event) => {
+        try {
+            await handleCreateOrUpdateStudent(event);
+        } catch (err) {
+            notify(`Save failed: ${err.message}`, 'error');
+        }
+    });
+
+    (async function init() {
+        try {
+            await Promise.all([loadClasses(), loadStudents()]);
+        } catch (err) {
+            notify(`Failed loading data: ${err.message}`, 'error');
+        }
+    })();
 </script>
 {% endblock %}

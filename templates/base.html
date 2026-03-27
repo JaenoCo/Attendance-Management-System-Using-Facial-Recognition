@@ -4,99 +4,290 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Attendance System{% endblock %}</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f5f5;
-        }
-        .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 0 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            height: 60px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .navbar h1 {
-            font-size: 24px;
-        }
-        .navbar a {
-            color: white;
-            text-decoration: none;
-            margin-left: 20px;
-            padding: 8px 15px;
-            border-radius: 5px;
-            transition: background 0.3s;
-        }
-        .navbar a:hover {
-            background: rgba(255,255,255,0.2);
-        }
-        .container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 0 20px;
-        }
-        .sidebar {
-            width: 250px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .sidebar-item {
-            padding: 12px;
-            margin-bottom: 8px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        .sidebar-item:hover, .sidebar-item.active {
-            background: #667eea;
-            color: white;
-        }
-        .sidebar-item a {
-            color: inherit;
-            text-decoration: none;
-            display: block;
-        }
-        .content {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 30px;
-        }
-        @media (max-width: 768px) {
-            .navbar {
-                flex-direction: column;
-                height: auto;
-                padding: 10px;
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'sans-serif']
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#4f46e5',
+                            600: '#4338ca',
+                            700: '#3730a3'
+                        }
+                    },
+                    boxShadow: {
+                        soft: '0 10px 28px rgba(15, 23, 42, 0.07)',
+                        lift: '0 14px 36px rgba(30, 41, 59, 0.12)'
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' }
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(16px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        },
+                        pulseBar: {
+                            '0%, 100%': { opacity: '.35' },
+                            '50%': { opacity: '.9' }
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn .45s ease-out both',
+                        'slide-up': 'slideUp .55s cubic-bezier(0.16, 1, 0.3, 1) both',
+                        'pulse-bar': 'pulseBar 1.15s ease-in-out infinite'
+                    }
+                }
             }
-            .navbar a {
-                margin-left: 0;
-                margin-top: 5px;
+        };
+    </script>
+    <style>
+        :root {
+            --page-bg-1: #f1f5f9;
+            --page-bg-2: #e2e8f0;
+        }
+
+        .app-bg {
+            background:
+                radial-gradient(circle at 14% 18%, rgba(79, 70, 229, 0.14) 0%, transparent 38%),
+                radial-gradient(circle at 82% 6%, rgba(14, 165, 233, 0.14) 0%, transparent 34%),
+                linear-gradient(160deg, var(--page-bg-1), var(--page-bg-2));
+            min-height: 100vh;
+        }
+
+        .skeleton {
+            position: relative;
+            overflow: hidden;
+            background: #e2e8f0;
+        }
+
+        .skeleton::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            transform: translateX(-100%);
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+            animation: shimmer 1.25s infinite;
+        }
+
+        @keyframes shimmer {
+            100% {
+                transform: translateX(100%);
             }
         }
     </style>
+    {% block extra_head %}{% endblock %}
 </head>
-<body>
-    <div class="navbar">
-        <h1>🎓 Attendance Management System</h1>
-        <div>
-            <span>Welcome, {{ username }}!</span>
-            <a href="/logout">Logout</a>
+<body class="app-bg text-slate-900" data-page="{% block page_name %}dashboard{% endblock %}">
+    <div class="min-h-screen">
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 border-r border-slate-200/80 bg-white/90 backdrop-blur transform -translate-x-full lg:translate-x-0 transition-transform duration-300">
+            <div class="h-16 px-6 flex items-center border-b border-slate-200/80">
+                <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-500 to-sky-500 text-white flex items-center justify-center font-extrabold shadow-lg shadow-brand-500/20">AS</div>
+                <div class="ml-3">
+                    <p class="text-sm font-bold tracking-tight">Attendance Cloud</p>
+                    <p class="text-xs text-slate-500">School Operations Suite</p>
+                </div>
+            </div>
+
+            <nav class="p-4 space-y-1 text-sm">
+                <a data-menu="dashboard" href="/" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200">
+                    <svg class="h-5 w-5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-4 0V13m0 8h0"/></svg>
+                    <span>Dashboard</span>
+                </a>
+                <a data-menu="students" href="/students" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200">
+                    <svg class="h-5 w-5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5V10a2 2 0 00-.586-1.414l-7-7a2 2 0 00-2.828 0l-7 7A2 2 0 004 10v10h5m8 0v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6m10 0H7"/></svg>
+                    <span>Students</span>
+                </a>
+                <a data-menu="attendance" href="/attendance" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200">
+                    <svg class="h-5 w-5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10m-12 9h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z"/></svg>
+                    <span>Attendance</span>
+                </a>
+                <a data-menu="reports" href="/reports" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200">
+                    <svg class="h-5 w-5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 20V10m5 10V4m5 16v-6"/></svg>
+                    <span>Reports</span>
+                </a>
+                <a data-menu="face-enrollment" href="/face-enrollment" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200">
+                    <svg class="h-5 w-5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 3h3a3 3 0 013 3v3m-6 12h3a3 3 0 003-3v-3M9 21H6a3 3 0 01-3-3v-3m6-12H6a3 3 0 00-3 3v3"/></svg>
+                    <span>Face Enrollment</span>
+                </a>
+                <a data-menu="settings" href="/settings" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200">
+                    <svg class="h-5 w-5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317a1.724 1.724 0 013.35 0l.162.713a1.724 1.724 0 002.591 1.066l.626-.36a1.724 1.724 0 012.285.633 1.724 1.724 0 01-.633 2.285l-.626.36a1.724 1.724 0 000 2.992l.626.36a1.724 1.724 0 01.633 2.285 1.724 1.724 0 01-2.285.633l-.626-.36a1.724 1.724 0 00-2.591 1.066l-.162.713a1.724 1.724 0 01-3.35 0l-.162-.713a1.724 1.724 0 00-2.591-1.066l-.626.36a1.724 1.724 0 01-2.285-.633 1.724 1.724 0 01.633-2.285l.626-.36a1.724 1.724 0 000-2.992l-.626-.36a1.724 1.724 0 01-.633-2.285 1.724 1.724 0 012.285-.633l.626.36a1.724 1.724 0 002.591-1.066l.162-.713z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"/></svg>
+                    <span>Settings</span>
+                </a>
+            </nav>
+
+            <div class="mx-4 mt-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 animate-fade-in">
+                <p class="text-xs font-semibold text-indigo-800">Admin Workflow</p>
+                <a href="/admin/register-student" class="mt-1 inline-flex items-center gap-2 text-xs text-indigo-700 hover:text-indigo-900 transition-colors">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M12 4v16m8-8H4"/></svg>
+                    Open Registration Hub
+                </a>
+            </div>
+        </aside>
+
+        <div id="sidebarBackdrop" class="fixed inset-0 z-30 bg-slate-900/30 hidden lg:hidden"></div>
+
+        <div class="lg:pl-72">
+            <header class="sticky top-0 z-30 h-16 bg-white/85 backdrop-blur border-b border-slate-200/80 px-4 lg:px-8 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button id="sidebarToggle" class="lg:hidden h-10 w-10 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors" type="button" aria-label="Toggle sidebar">
+                        <svg class="h-5 w-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </button>
+                    <div>
+                        <p class="text-xs text-slate-500">School Attendance Management</p>
+                        <h1 class="text-lg font-bold tracking-tight">{% block page_header %}Dashboard{% endblock %}</h1>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="hidden sm:block text-right">
+                        <p class="text-sm font-medium">{{ username or 'Admin User' }}</p>
+                        <p class="text-xs text-slate-500">Administrator</p>
+                    </div>
+                    <div class="h-9 w-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-semibold ring-2 ring-brand-50">
+                        {{ (username or 'A')[0] | upper }}
+                    </div>
+                    <a href="/logout" class="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all duration-200 hover:-translate-y-0.5">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1"/></svg>
+                        Logout
+                    </a>
+                </div>
+            </header>
+
+            <main class="p-4 lg:p-8 animate-slide-up">
+                {% block content %}{% endblock %}
+            </main>
         </div>
     </div>
-    
-    <div class="container">
-        {% block content %}{% endblock %}
-    </div>
+
+    <script>
+        function setActiveSidebarItem() {
+            const current = document.body.dataset.page;
+            document.querySelectorAll('.menu-item').forEach((el) => {
+                if (el.dataset.menu === current) {
+                    el.classList.add('bg-brand-50', 'text-brand-700', 'font-semibold', 'shadow-sm');
+                    const icon = el.querySelector('svg');
+                    if (icon) {
+                        icon.classList.remove('text-slate-400');
+                        icon.classList.add('text-brand-600');
+                    }
+                }
+            });
+        }
+
+        function setupSidebarToggle() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            const backdrop = document.getElementById('sidebarBackdrop');
+
+            if (!sidebar || !toggle || !backdrop) {
+                return;
+            }
+
+            const isDesktop = () => window.matchMedia('(min-width: 1024px)').matches;
+
+            const openSidebar = () => {
+                sidebar.classList.remove('-translate-x-full');
+                backdrop.classList.remove('hidden');
+            };
+
+            const closeSidebar = () => {
+                if (isDesktop()) {
+                    return;
+                }
+                sidebar.classList.add('-translate-x-full');
+                backdrop.classList.add('hidden');
+            };
+
+            toggle.addEventListener('click', () => {
+                const isHidden = sidebar.classList.contains('-translate-x-full');
+                if (isHidden) {
+                    openSidebar();
+                } else {
+                    closeSidebar();
+                }
+            });
+
+            backdrop.addEventListener('click', closeSidebar);
+
+            document.addEventListener('click', (event) => {
+                if (isDesktop() || sidebar.classList.contains('-translate-x-full')) {
+                    return;
+                }
+                const clickedInsideSidebar = sidebar.contains(event.target);
+                const clickedToggle = toggle.contains(event.target);
+                if (!clickedInsideSidebar && !clickedToggle) {
+                    closeSidebar();
+                }
+            });
+
+            sidebar.querySelectorAll('a').forEach((link) => {
+                link.addEventListener('click', closeSidebar);
+            });
+
+            window.addEventListener('resize', () => {
+                if (isDesktop()) {
+                    backdrop.classList.add('hidden');
+                    sidebar.classList.remove('-translate-x-full');
+                } else {
+                    sidebar.classList.add('-translate-x-full');
+                }
+            });
+        }
+
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, options);
+            const contentType = response.headers.get('content-type') || '';
+            const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+            if (!response.ok) {
+                const message = payload && payload.message ? payload.message : 'Request failed';
+                throw new Error(message);
+            }
+            return payload;
+        }
+
+        function statusBadge(status) {
+            const normalized = String(status || '').toLowerCase();
+            const map = {
+                present: 'bg-emerald-100 text-emerald-700',
+                late: 'bg-amber-100 text-amber-700',
+                absent: 'bg-rose-100 text-rose-700',
+                trained: 'bg-indigo-100 text-indigo-700',
+                pending: 'bg-slate-200 text-slate-700'
+            };
+            return map[normalized] || 'bg-slate-200 text-slate-700';
+        }
+
+        function notify(message, type = 'info') {
+            const colors = {
+                success: 'bg-emerald-600',
+                error: 'bg-rose-600',
+                info: 'bg-brand-600'
+            };
+            const toast = document.createElement('div');
+            toast.className = `fixed right-4 top-4 z-50 px-4 py-3 rounded-lg text-white text-sm shadow-lg animate-fade-in ${colors[type] || colors.info}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 2800);
+        }
+
+        setActiveSidebarItem();
+        setupSidebarToggle();
+    </script>
+    {% block page_scripts %}{% endblock %}
 </body>
 </html>
