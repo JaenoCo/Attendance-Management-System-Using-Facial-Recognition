@@ -29,6 +29,7 @@ import sys
 import atexit
 import socket
 import re
+from pathlib import Path
 
 # Initialize FastAPI app
 app = FastAPI(title="School Attendance System", version="2.0")
@@ -162,6 +163,175 @@ def _normalize_identity_value(value):
     text = text.replace('-', ' ').replace('_', ' ')
     text = re.sub(r'\s+', ' ', text)
     return text
+
+
+FACE_MATCH_SIMILARITY_THRESHOLD = 0.55
+LIVE_FACE_DETECTION_THRESHOLD = 0.35
+
+
+def _to_flat_embedding(embedding_value):
+    """Convert stored/live embedding to 1D numpy array."""
+    if embedding_value is None:
+        return None
+
+    parsed = embedding_value
+    if isinstance(embedding_value, str):
+        parsed = json.loads(embedding_value)
+
+    array = np.asarray(parsed, dtype=np.float32)
+    if array.size == 0:
+        return None
+
+    return array.reshape(-1)
+
+
+def _cosine_similarity(vec_a, vec_b):
+    """Cosine similarity between two vectors."""
+    denom = (np.linalg.norm(vec_a) * np.linalg.norm(vec_b))
+    if denom == 0:
+        return 0.0
+    return float(np.dot(vec_a, vec_b) / denom)
+
+
+def _student_identity_tokens(student):
+    """Build normalized identity tokens for matching recognizer labels to students."""
+    if not student:
+        return set()
+
+    first_name = str(student.get('first_name') or '').strip()
+    last_name = str(student.get('last_name') or '').strip()
+    full_name = f"{first_name} {last_name}".strip()
+
+    raw_values = [
+        student.get('student_id'),
+        student.get('roll_number'),
+        first_name,
+        last_name,
+        full_name
+    ]
+
+    tokens = set()
+    for value in raw_values:
+        normalized = _normalize_identity_value(value)
+        if normalized:
+            tokens.add(normalized)
+    return tokens
+
+
+def _find_student_by_label(students, predicted_label):
+    """Map a predicted recognizer label to a student record."""
+    normalized_label = _normalize_identity_value(predicted_label)
+    if not normalized_label:
+        return None
+
+    for student in students:
+        if normalized_label in _student_identity_tokens(student):
+            return student
+    return None
+
+
+def _save_capture_image(student_id, image_array):
+    """Persist a captured frame under dataset/<student_id>/ and return relative path."""
+    dataset_dir = Path('dataset') / str(student_id)
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+    image_path = dataset_dir / filename
+
+    saved = cv2.imwrite(str(image_path), image_array)
+    if not saved:
+        raise ValueError('Failed to save captured image to dataset')
+
+    return str(image_path).replace('\\\\', '/')
+
+
+def _upsert_student_face_enrollment(student_id, new_embedding, image_array=None):
+    """Update student embedding using running average and persist capture image metadata."""
+    merged_embedding = _to_flat_embedding(new_embedding)
+    if merged_embedding is None:
+        raise ValueError('Invalid face embedding from capture')
+
+    cursor = None
+    image_path = None
+    captures_count = None
+
+    try:
+        if image_array is not None:
+            image_path = _save_capture_image(student_id, image_array)
+
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT face_data, COALESCE(faces_captured, 0) AS faces_captured
+            FROM students
+            WHERE student_id = %s
+            """,
+            (student_id,)
+        )
+        existing = cursor.fetchone() or {}
+
+        existing_embedding = None
+        try:
+            existing_embedding = _to_flat_embedding(existing.get('face_data'))
+        except Exception:
+            existing_embedding = None
+
+        existing_count = int(existing.get('faces_captured') or 0)
+        if existing_embedding is not None and existing_embedding.shape == merged_embedding.shape and existing_count > 0:
+            merged_embedding = ((existing_embedding * existing_count) + merged_embedding) / (existing_count + 1)
+
+        embedding_json = json.dumps(merged_embedding.tolist())
+
+        try:
+            cursor.execute(
+                """
+                UPDATE students
+                SET face_registered = 1,
+                    face_data = %s,
+                    faces_captured = COALESCE(faces_captured, 0) + 1,
+                    last_face_capture = NOW(),
+                    face_training_status = 'needs_retrain'
+                WHERE student_id = %s
+                """,
+                (embedding_json, student_id)
+            )
+            captures_count = existing_count + 1
+        except Exception:
+            # Fallback for older schema where optional face tracking columns are not present.
+            cursor.execute(
+                """
+                UPDATE students
+                SET face_registered = 1,
+                    face_data = %s
+                WHERE student_id = %s
+                """,
+                (embedding_json, student_id)
+            )
+
+        db.connection.commit()
+
+        if image_path:
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO face_captures (student_id, image_path, quality_score, is_used_for_training)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (student_id, image_path, 1.0, False)
+                )
+                db.connection.commit()
+            except Exception as e:
+                db.connection.rollback()
+                print(f"[WARNING] Could not write face_captures row: {e}")
+
+        return {
+            'embedding': merged_embedding.tolist(),
+            'image_path': image_path,
+            'captures_count': captures_count
+        }
+    finally:
+        if cursor:
+            cursor.close()
 
 def ensure_connection():
     """Ensure database connection is active"""
@@ -765,20 +935,19 @@ async def capture_face_webcam(request: Request, student_id: int = Form(...), ima
         )
         
         if result['status'] == 'success':
-            # Store face embedding in database (optional)
-            cursor = db.connection.cursor()
             try:
-                embedding_json = json.dumps(result['embedding'])
-                cursor.execute("""
-                    UPDATE students 
-                    SET face_registered = 1, face_data = %s
-                    WHERE student_id = %s
-                """, (embedding_json, student_id))
-                db.connection.commit()
+                enrollment_update = _upsert_student_face_enrollment(
+                    student_id=student_id,
+                    new_embedding=result.get('embedding'),
+                    image_array=image_array
+                )
+                result['embedding'] = enrollment_update['embedding']
+                if enrollment_update.get('image_path'):
+                    result['image_path'] = enrollment_update['image_path']
+                if enrollment_update.get('captures_count') is not None:
+                    result['captures_count'] = enrollment_update['captures_count']
             except Exception as e:
-                print(f"[WARNING] Could not store embedding in DB: {e}")
-            finally:
-                cursor.close()
+                print(f"[WARNING] Could not persist enrollment update: {e}")
         
         return result
     
@@ -807,7 +976,7 @@ async def detect_faces_endpoint(request: Request):
             return JSONResponse({'status': 'error', 'message': 'Invalid image format'}, status_code=400)
 
         fr_system = get_facial_recognition_system()
-        raw_detections = fr_system.detect_faces(frame)
+        raw_detections = fr_system.detect_faces(frame, min_confidence=LIVE_FACE_DETECTION_THRESHOLD)
 
         frame_h, frame_w = frame.shape[:2]
         faces_payload = []
@@ -880,19 +1049,19 @@ async def add_face_manual(
         )
         
         if result['status'] == 'success':
-            cursor = db.connection.cursor()
             try:
-                embedding_json = json.dumps(result['embedding'])
-                cursor.execute("""
-                    UPDATE students 
-                    SET face_registered = 1, face_data = %s
-                    WHERE student_id = %s
-                """, (embedding_json, student_id))
-                db.connection.commit()
+                enrollment_update = _upsert_student_face_enrollment(
+                    student_id=student_id,
+                    new_embedding=result.get('embedding'),
+                    image_array=image_array
+                )
+                result['embedding'] = enrollment_update['embedding']
+                if enrollment_update.get('image_path'):
+                    result['image_path'] = enrollment_update['image_path']
+                if enrollment_update.get('captures_count') is not None:
+                    result['captures_count'] = enrollment_update['captures_count']
             except Exception as e:
-                print(f"[WARNING] Could not store embedding in DB: {e}")
-            finally:
-                cursor.close()
+                print(f"[WARNING] Could not persist enrollment update: {e}")
         
         return result
     
@@ -1342,7 +1511,7 @@ async def recognize_face_endpoint(request: Request):
         fr_system = get_facial_recognition_system()
 
         # Always run raw detection first so UI can draw bounding boxes
-        raw_detections = fr_system.detect_faces(frame)
+        raw_detections = fr_system.detect_faces(frame, min_confidence=LIVE_FACE_DETECTION_THRESHOLD)
         faces_payload = []
         frame_h, frame_w = frame.shape[:2]
         for detection in raw_detections:
@@ -1358,19 +1527,8 @@ async def recognize_face_endpoint(request: Request):
 
             faces_payload.append({
                 'box': normalized_box,
-                'name': None,
                 'confidence': float(detection.get('confidence', 0.0))
             })
-        
-        # Process frame and detect faces
-        detected_faces = fr_system.process_frame(frame)
-        if detected_faces:
-            for idx, face in enumerate(detected_faces):
-                if idx >= len(faces_payload):
-                    break
-                if face.get('name'):
-                    faces_payload[idx]['name'] = str(face.get('name'))
-                    faces_payload[idx]['confidence'] = float(face.get('confidence', faces_payload[idx]['confidence']))
         
         if not raw_detections:
             return JSONResponse({
@@ -1380,75 +1538,88 @@ async def recognize_face_endpoint(request: Request):
                 'faces': []
             })
 
-        if not detected_faces:
+        # Extract embedding from the best detected face in this frame
+        capture_result = fr_system.capture_face_from_image(frame, min_confidence=LIVE_FACE_DETECTION_THRESHOLD)
+        if capture_result.get('status') != 'success':
             return JSONResponse({
                 'status': 'error',
-                'message': 'Face detected, but recognition model is not ready',
+                'message': capture_result.get('message', 'Face detected, but embedding extraction failed'),
                 'recognized': False,
                 'faces': faces_payload
             })
-        
-        # Get the most confident face recognition
-        best_match = max(detected_faces, key=lambda x: x['confidence'])
-        
-        if best_match['confidence'] < 0.20:  # Recognition probability threshold
+
+        live_embedding = _to_flat_embedding(capture_result.get('embedding'))
+        if live_embedding is None:
             return JSONResponse({
                 'status': 'error',
-                'message': 'Face confidence too low',
+                'message': 'Could not prepare face embedding for matching',
                 'recognized': False,
-                'confidence': float(best_match['confidence']),
                 'faces': faces_payload
             })
-        
-        # Look up student by recognized label/name
-        student_name = best_match['name']
-        predicted_label = str(student_name or '').strip()
-        normalized_label = _normalize_identity_value(predicted_label)
+
         cursor = db.connection.cursor(dictionary=True)
-        
+
         cursor.execute("""
-            SELECT student_id, roll_number, first_name, last_name
+            SELECT student_id, roll_number, first_name, last_name, face_data
             FROM students
+            WHERE face_registered = 1
         """)
-        students = cursor.fetchall() or []
+        enrolled_students = cursor.fetchall() or []
 
         student = None
-        for candidate in students:
-            full_name = f"{candidate.get('first_name', '')} {candidate.get('last_name', '')}".strip()
-            aliases = {
-                _normalize_identity_value(candidate.get('student_id')),
-                _normalize_identity_value(candidate.get('roll_number')),
-                _normalize_identity_value(full_name),
-                _normalize_identity_value(full_name.replace(' ', '_')),
-                _normalize_identity_value(candidate.get('first_name')),
-                _normalize_identity_value(candidate.get('last_name')),
-            }
+        best_similarity = -1.0
+        model_probability = 0.0
 
-            if normalized_label and normalized_label in aliases:
-                student = candidate
-                break
+        # Preferred path: recognizer model trained on captured dataset images.
+        try:
+            model_label, model_probability = fr_system.recognize_face(live_embedding.reshape(1, -1))
+            if model_label and model_probability >= max(CONFIDENCE_THRESHOLD, 0.5):
+                student = _find_student_by_label(enrolled_students, model_label)
+        except Exception:
+            student = None
+
+        # Fallback path: direct cosine similarity against stored enrollment embeddings.
+        if student is None:
+            students_with_embeddings = [s for s in enrolled_students if s.get('face_data') is not None]
+            for candidate in students_with_embeddings:
+                try:
+                    candidate_embedding = _to_flat_embedding(candidate.get('face_data'))
+                except Exception:
+                    candidate_embedding = None
+
+                if candidate_embedding is None:
+                    continue
+
+                if candidate_embedding.shape != live_embedding.shape:
+                    continue
+
+                similarity = _cosine_similarity(live_embedding, candidate_embedding)
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    student = candidate
+
+            if best_similarity < FACE_MATCH_SIMILARITY_THRESHOLD:
+                student = None
         
         if student:
             return JSONResponse({
                 'status': 'success',
                 'message': f'Face recognized: {student["first_name"]} {student["last_name"]}',
                 'recognized': True,
-                'predicted_label': predicted_label,
                 'student': {
                     'id': student['student_id'],
                     'name': f"{student['first_name']} {student['last_name']}",
                     'roll_number': student['roll_number']
                 },
-                'confidence': float(best_match['confidence']),
+                'confidence': float(best_similarity if best_similarity > -1 else model_probability),
                 'faces': faces_payload
             })
         else:
             return JSONResponse({
                 'status': 'error',
-                'message': f'Face recognized but student not found in database: {student_name}',
-                'recognized': True,
-                'face_name': student_name,
-                'predicted_label': predicted_label,
+                'message': 'Face does not match any registered student capture',
+                'recognized': False,
+                'confidence': float(best_similarity if best_similarity > -1 else model_probability),
                 'faces': faces_payload
             })
         

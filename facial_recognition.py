@@ -72,7 +72,7 @@ class FacialRecognitionSystem:
         except Exception as e:
             print(f"[ERROR] Error loading models: {e}")
     
-    def detect_faces(self, frame):
+    def detect_faces(self, frame, min_confidence=None):
         """Detect faces in a frame"""
         self._ensure_models_loaded()
         if self.detector is None:
@@ -85,10 +85,11 @@ class FacialRecognitionSystem:
             self.detector.setInput(blob)
             detections = self.detector.forward()
             
+            threshold = CONFIDENCE_THRESHOLD if min_confidence is None else float(min_confidence)
             faces = []
             for i in range(0, detections.shape[2]):
                 confidence = detections[0, 0, i, 2]
-                if confidence > CONFIDENCE_THRESHOLD:
+                if confidence > threshold:
                     box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                     (startX, startY, endX, endY) = box.astype("int")
                     faces.append({
@@ -170,25 +171,61 @@ class FacialRecognitionSystem:
             print(f"[ERROR] Error processing frame: {e}")
             return []
     
-    def capture_face_from_image(self, image_array, student_id=None, student_name=None):
+    def capture_face_from_image(self, image_array, student_id=None, student_name=None, min_confidence=None):
         """Capture and extract embeddings from an image"""
         try:
-            # Detect faces in image
-            faces = self.process_frame(image_array)
-            
-            if not faces:
+            detections = self.detect_faces(image_array, min_confidence=min_confidence)
+
+            if not detections:
                 return {
                     'status': 'error',
                     'message': 'No face detected in image'
                 }
-            
-            # Return the best match
-            best_face = max(faces, key=lambda x: x['confidence'])
-            
+
+            image_h, image_w = image_array.shape[:2]
+            valid_faces = []
+            for detection in detections:
+                box = detection.get('box')
+                if not box or len(box) != 4:
+                    continue
+
+                startX = max(0, min(int(box[0]), image_w - 1))
+                startY = max(0, min(int(box[1]), image_h - 1))
+                endX = max(0, min(int(box[2]), image_w - 1))
+                endY = max(0, min(int(box[3]), image_h - 1))
+
+                if endX <= startX or endY <= startY:
+                    continue
+
+                face = image_array[startY:endY, startX:endX]
+                if face.size == 0:
+                    continue
+
+                if face.shape[0] < FACE_MIN_HEIGHT or face.shape[1] < FACE_MIN_WIDTH:
+                    continue
+
+                embedding = self.get_face_embedding(face)
+                if embedding is None:
+                    continue
+
+                valid_faces.append({
+                    'box': (startX, startY, endX, endY),
+                    'confidence': float(detection.get('confidence', 0.0)),
+                    'embedding': embedding
+                })
+
+            if not valid_faces:
+                return {
+                    'status': 'error',
+                    'message': 'Face detected, but could not extract face embedding'
+                }
+
+            best_face = max(valid_faces, key=lambda x: x['confidence'])
+
             return {
                 'status': 'success',
                 'embedding': best_face['embedding'].tolist() if isinstance(best_face['embedding'], np.ndarray) else best_face['embedding'],
-                'confidence': float(best_face['confidence']),
+                'confidence': best_face['confidence'],
                 'box': best_face['box']
             }
         except Exception as e:
