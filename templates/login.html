@@ -20,7 +20,29 @@
         };
     </script>
 </head>
-<body class="min-h-screen bg-slate-100 relative overflow-hidden">
+    <style>
+        :root {
+            --page-bg-1: #f1f5f9;
+            --page-bg-2: #e2e8f0;
+            --text-main: #0f172a;
+        }
+        .dark {
+            --page-bg-1: #18181b;
+            --page-bg-2: #27272a;
+            --text-main: #f1f5f9;
+        }
+        body { color: var(--text-main); background: none; }
+        .dark .bg-white, .dark .bg-slate-50, .dark .bg-indigo-50, .dark .bg-white\/85, .dark .bg-white\/90, .dark .bg-brand-100 {
+            background-color: #23272f !important; color: #f1f5f9 !important;
+        }
+        .dark .text-slate-900, .dark .text-slate-600, .dark .text-slate-700, .dark .text-indigo-800, .dark .text-brand-700, .dark .text-slate-500 {
+            color: #f1f5f9 !important;
+        }
+        .dark .border-slate-200, .dark .border-indigo-100, .dark .border-slate-200\/80 {
+            border-color: #444 !important;
+        }
+    </style>
+<body class="min-h-screen bg-slate-100 relative overflow-hidden" id="mainBody">
     <div class="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-indigo-200/50 blur-3xl"></div>
     <div class="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-sky-200/50 blur-3xl"></div>
     <div class="min-h-screen grid place-items-center p-4">
@@ -61,4 +83,13 @@
         </div>
     </div>
 </body>
+</body>
+<script>
+// Sync dark mode from localStorage
+try {
+    const settings = JSON.parse(localStorage.getItem('attendance-ui-settings') || '{}');
+    if (settings.toggleDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+} catch {}
+</script>
 </html>

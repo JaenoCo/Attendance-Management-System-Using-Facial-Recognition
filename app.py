@@ -875,9 +875,10 @@ async def settings_page(request: Request):
 
 # ==================== Facial Recognition Routes ====================
 
+@app.get("/face-attendance")
 @app.get("/face-enrollment")
 async def face_enrollment_page(request: Request):
-    """Face enrollment page"""
+    """Face attendance page."""
     current_user = get_current_user(request)
     if not current_user:
         return RedirectResponse(url="/login", status_code=302)

@@ -23,7 +23,67 @@
         };
     </script>
 </head>
+    <style>
+        :root {
+            --page-bg-1: #f1f5f9;
+            --page-bg-2: #e2e8f0;
+            --text-main: #0f172a;
+        }
+        .dark {
+            --page-bg-1: #18181b;
+            --page-bg-2: #27272a;
+            --text-main: #f1f5f9;
+        }
+        body { color: var(--text-main); background: none; }
+        .dark .bg-white, .dark .bg-slate-50, .dark .bg-indigo-50, .dark .bg-white\/85, .dark .bg-white\/90, .dark .bg-brand-100 {
+            background-color: #181a20 !important;
+            color: #f3f4f6 !important;
+        }
+        .dark .bg-indigo-100, .dark .bg-emerald-100, .dark .bg-amber-100 {
+            background-color: #23213a !important;
+        }
+        .dark .text-slate-900, .dark .text-slate-600, .dark .text-slate-700, .dark .text-indigo-800, .dark .text-brand-700, .dark .text-slate-500, .dark .text-slate-800 {
+            color: #f3f4f6 !important;
+            text-shadow: 0 1px 2px #000a;
+        }
+        .dark .text-emerald-700 {
+            color: #6ee7b7 !important;
+        }
+        .dark .text-amber-700 {
+            color: #fde68a !important;
+        }
+        .dark .border-slate-200, .dark .border-indigo-100, .dark .border-slate-200\/80 {
+            border-color: #393e4b !important;
+        }
+        .dark input, .dark select, .dark textarea {
+            background-color: #23213a !important;
+            color: #f3f4f6 !important;
+            border-color: #393e4b !important;
+        }
+        .dark .font-semibold, .dark .font-bold {
+            color: #fff !important;
+        }
+        .dark .rounded-xl, .dark .rounded-2xl {
+            box-shadow: 0 1px 4px #0003;
+        }
+        .dark .shadow-soft {
+            box-shadow: 0 4px 24px #0006 !important;
+        }
+        .dark .bg-emerald-100 {
+            background-color: #14532d !important;
+            color: #6ee7b7 !important;
+        }
+        .dark .bg-amber-100 {
+            background-color: #78350f !important;
+            color: #fde68a !important;
+        }
+        .dark .bg-sky-50 {
+            background-color: #23213a !important;
+            color: #7dd3fc !important;
+        }
+    </style>
 <body class="min-h-screen bg-slate-100 text-slate-900">
+    <body class="min-h-screen bg-slate-100 text-slate-900" id="mainBody">
     <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <header class="mb-5 bg-white border border-slate-200 rounded-2xl shadow-soft px-5 py-4 flex items-center justify-between flex-wrap gap-3">
             <div>
@@ -225,4 +285,12 @@
         setInterval(loadStudents, 5000);
     </script>
 </body>
+<script>
+// Sync dark mode from localStorage
+try {
+    const settings = JSON.parse(localStorage.getItem('attendance-ui-settings') || '{}');
+    if (settings.toggleDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+} catch {}
+</script>
 </html>

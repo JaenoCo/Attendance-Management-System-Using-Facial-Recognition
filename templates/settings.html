@@ -44,6 +44,10 @@
                     <span class="text-sm">Require Face for Check-in</span>
                     <input id="toggleFaceOnly" type="checkbox" class="h-4 w-4" checked>
                 </label>
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Dark Mode</span>
+                    <input id="toggleDarkMode" type="checkbox" class="h-4 w-4">
+                </label>
             </div>
 
             <div class="flex justify-end">
@@ -115,9 +119,11 @@
             schoolEnd: document.getElementById('schoolEnd').value,
             toggleAutoTrain: document.getElementById('toggleAutoTrain').checked,
             toggleSms: document.getElementById('toggleSms').checked,
-            toggleFaceOnly: document.getElementById('toggleFaceOnly').checked
+            toggleFaceOnly: document.getElementById('toggleFaceOnly').checked,
+            toggleDarkMode: document.getElementById('toggleDarkMode').checked
         };
         writeSettings(payload);
+        setDarkMode(payload.toggleDarkMode);
         notify('Settings saved locally', 'success');
     }
 
@@ -143,9 +149,23 @@
         }
     }
 
+    function setDarkMode(enabled) {
+        if (enabled) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }
+
     document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
 
+    // Dark mode toggle live update
+    document.getElementById('toggleDarkMode').addEventListener('change', function(e) {
+        setDarkMode(e.target.checked);
+    });
+
     loadFormFromStorage();
+    setDarkMode(document.getElementById('toggleDarkMode').checked);
     checkHealth();
 </script>
 {% endblock %}
