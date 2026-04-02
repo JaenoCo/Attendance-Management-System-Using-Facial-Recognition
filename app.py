@@ -167,7 +167,8 @@ def _normalize_identity_value(value):
     return text
 
 
-FACE_MATCH_SIMILARITY_THRESHOLD = 0.55
+FACE_MATCH_DISTANCE_THRESHOLD = 0.45
+FACE_MATCH_SIMILARITY_THRESHOLD = 1.0 - FACE_MATCH_DISTANCE_THRESHOLD
 LIVE_FACE_DETECTION_THRESHOLD = 0.35
 
 
@@ -193,6 +194,23 @@ def _cosine_similarity(vec_a, vec_b):
     if denom == 0:
         return 0.0
     return float(np.dot(vec_a, vec_b) / denom)
+
+
+def _cosine_distance(vec_a, vec_b):
+    """Convert cosine similarity into a CFIS-style distance score."""
+    return 1.0 - _cosine_similarity(vec_a, vec_b)
+
+
+def _distance_to_cfis_percentage(distance, threshold=FACE_MATCH_DISTANCE_THRESHOLD):
+    """Map an accepted distance into the 85%-100% range used by CFIS."""
+    if distance > threshold:
+        return None
+
+    if threshold <= 0:
+        return 100.0
+
+    percentage = 85.0 + ((threshold - distance) / threshold) * 15.0
+    return max(85.0, min(100.0, percentage))
 
 
 def _student_identity_tokens(student):
@@ -264,9 +282,9 @@ def _find_student_by_label_fallback(cursor, predicted_label):
 
 
 def _find_student_by_capture_similarity(cursor, fr_system, live_embedding, min_similarity=FACE_MATCH_SIMILARITY_THRESHOLD, max_samples=50):
-    """Match a live embedding against stored enrollment captures as a fallback."""
+    """Match a live embedding against stored enrollment captures using CFIS-style ranking."""
     if cursor is None or fr_system is None or live_embedding is None:
-        return None, 0.0
+        return None, 0.0, []
 
     try:
         cursor.execute(
@@ -283,7 +301,7 @@ def _find_student_by_capture_similarity(cursor, fr_system, live_embedding, min_s
         )
         rows = cursor.fetchall() or []
     except Exception:
-        return None, 0.0
+        return None, 0.0, []
 
     embeddings_by_student = {}
     student_rows = {}
@@ -324,6 +342,7 @@ def _find_student_by_capture_similarity(cursor, fr_system, live_embedding, min_s
 
     best_student = None
     best_similarity = 0.0
+    matched_candidates = []
 
     for student_id, student_embeddings in embeddings_by_student.items():
         if not student_embeddings:
@@ -332,15 +351,40 @@ def _find_student_by_capture_similarity(cursor, fr_system, live_embedding, min_s
         stacked = np.vstack(student_embeddings)
         centroid = stacked.mean(axis=0)
         similarity = _cosine_similarity(live_embedding, centroid)
+        distance = _cosine_distance(live_embedding, centroid)
 
-        if similarity > best_similarity:
-            best_similarity = similarity
-            best_student = student_rows.get(student_id)
+        if similarity < min_similarity or distance > FACE_MATCH_DISTANCE_THRESHOLD:
+            continue
 
-    if best_student and best_similarity >= min_similarity:
-        return best_student, best_similarity
+        percentage = _distance_to_cfis_percentage(distance)
+        if percentage is None:
+            continue
 
-    return None, 0.0
+        candidate = dict(student_rows.get(student_id) or {})
+        candidate.update({
+            'student_id': student_id,
+            'distance': float(distance),
+            'similarity': float(similarity),
+            'match_percentage': float(percentage),
+        })
+        matched_candidates.append(candidate)
+
+    matched_candidates.sort(key=lambda item: item['distance'])
+
+    if matched_candidates:
+        best_candidate = matched_candidates[0]
+        best_student = {
+            'student_id': best_candidate.get('student_id'),
+            'roll_number': best_candidate.get('roll_number'),
+            'first_name': best_candidate.get('first_name'),
+            'last_name': best_candidate.get('last_name'),
+            'faces_captured': best_candidate.get('faces_captured'),
+            'face_training_status': best_candidate.get('face_training_status'),
+        }
+        best_similarity = float(best_candidate.get('similarity', 0.0))
+        return best_student, best_similarity, matched_candidates
+
+    return None, 0.0, []
 
 
 def _ensure_student_face_columns():
@@ -753,7 +797,11 @@ async def get_today_attendance():
     """Get today's attendance for all students"""
     cursor = None
     try:
-        
+        ensure_connection()
+        if not db.connection:
+            print("[WARNING] Attendance fetch skipped because the database connection is unavailable")
+            return []
+
         today = date.today()
         cursor = db.connection.cursor(dictionary=True)
         cursor.execute("""
@@ -1443,7 +1491,8 @@ async def register_student(
         
         # Check if student already exists
         cursor.execute("SELECT student_id FROM students WHERE roll_number = %s", (roll_number,))
-push             return JSONResponse(
+        if cursor.fetchone():
+            return JSONResponse(
                 {'status': 'error', 'message': 'Student with this ID already exists'},
                 status_code=400
             )
@@ -1586,6 +1635,13 @@ async def attendance_checkin(
     """Mark attendance using face recognition"""
     cursor = None
     try:
+        ensure_connection()
+        if not db.connection:
+            return JSONResponse(
+                {'status': 'error', 'message': 'Database connection is unavailable'},
+                status_code=503
+            )
+
         cursor = db.connection.cursor(dictionary=True)
         
         # Verify student exists
@@ -1782,57 +1838,46 @@ async def recognize_face_endpoint(request: Request):
         cursor.execute("""
             SELECT student_id, roll_number, first_name, last_name, faces_captured, face_training_status
             FROM students
-            WHERE face_training_status = 'trained' OR COALESCE(faces_captured, 0) > 0
+            WHERE COALESCE(faces_captured, 0) > 0 OR face_training_status IN ('trained', 'needs_retrain')
+            ORDER BY student_id
         """)
         enrolled_students = cursor.fetchall() or []
 
-        student = None
-        model_probability = 0.0
-        capture_similarity = 0.0
-
-        # Preferred path: recognizer model trained on captured dataset images.
-        try:
-            model_label, model_probability = fr_system.recognize_face(live_embedding.reshape(1, -1))
-            if model_label and model_probability >= CONFIDENCE_THRESHOLD:
-                student = _find_student_by_label(enrolled_students, model_label)
-                if student is None:
-                    student = _find_student_by_label_fallback(cursor, model_label)
-        except Exception:
-            student = None
-
-        fallback_student, fallback_similarity = _find_student_by_capture_similarity(
+        student, capture_similarity, matched_candidates = _find_student_by_capture_similarity(
             cursor,
             fr_system,
             live_embedding,
             min_similarity=FACE_MATCH_SIMILARITY_THRESHOLD
         )
 
-        if fallback_student and (student is None or fallback_similarity >= model_probability):
-            student = fallback_student
-            capture_similarity = fallback_similarity
-            model_probability = fallback_similarity
-
         if student:
             return JSONResponse({
                 'status': 'success',
                 'message': f'Face recognized: {student["first_name"]} {student["last_name"]}',
                 'recognized': True,
+                'match_source': 'database_capture',
+                'matching_type': 'cfis_style_distance',
                 'student': {
                     'id': student['student_id'],
                     'name': f"{student['first_name']} {student['last_name']}",
                     'roll_number': student['roll_number']
                 },
-                'confidence': float(model_probability),
+                'confidence': float(capture_similarity),
                 'capture_similarity': float(capture_similarity),
+                'match_percentage': float(matched_candidates[0]['match_percentage']) if matched_candidates else float(capture_similarity) * 100.0,
+                'matches': matched_candidates[:5],
                 'faces': faces_payload
             })
         else:
             return JSONResponse({
                 'status': 'error',
-                'message': 'Face does not match any registered student capture',
+                'message': 'Face does not match any student in the database',
                 'recognized': False,
-                'confidence': float(model_probability),
+                'match_source': 'database_capture',
+                'matching_type': 'cfis_style_distance',
+                'confidence': float(capture_similarity),
                 'capture_similarity': float(capture_similarity),
+                'matches': matched_candidates,
                 'faces': faces_payload
             })
         

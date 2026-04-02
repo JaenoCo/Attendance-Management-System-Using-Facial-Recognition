@@ -87,6 +87,17 @@
                 </div>
 
                 <div id="studentInfo" class="hidden mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4"></div>
+
+                <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h2 class="text-sm font-semibold text-slate-900">Today's Attendance Log</h2>
+                            <p class="text-xs text-slate-500">Recognized students appear here after check-in.</p>
+                        </div>
+                        <button type="button" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold hover:bg-slate-50 transition-colors" id="refreshAttendanceBtn">Refresh</button>
+                    </div>
+                    <div id="recentAttendance" class="text-sm text-slate-500">Loading attendance...</div>
+                </div>
             </div>
 
             <footer class="px-6 py-3 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500">
@@ -168,6 +179,7 @@
             }
 
             renderStudentInfo(data.student || null);
+            await loadAttendanceToday();
         }
 
         function renderStudentInfo(student) {
@@ -269,6 +281,64 @@
             drawBoundingBoxes([]);
         }
 
+        function formatAttendanceTime(value) {
+            if (!value) return '--';
+            try {
+                return new Date(`1970-01-01T${value}`).toLocaleTimeString();
+            } catch {
+                return value;
+            }
+        }
+
+        function renderAttendanceTable(rows) {
+            const container = document.getElementById('recentAttendance');
+            const presentRows = Array.isArray(rows) ? rows.filter((row) => row.entry_time).slice(0, 10) : [];
+
+            if (!presentRows.length) {
+                container.innerHTML = '<div class="text-slate-500">No check-ins recorded yet today.</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm border-separate border-spacing-y-2">
+                        <thead class="text-slate-500">
+                            <tr>
+                                <th class="text-left px-2 py-2 font-medium">Student</th>
+                                <th class="text-left px-2 py-2 font-medium">Roll</th>
+                                <th class="text-left px-2 py-2 font-medium">Time</th>
+                                <th class="text-left px-2 py-2 font-medium">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${presentRows.map((row) => {
+                                const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || '--';
+                                const status = String(row.status || 'present');
+                                return `
+                                    <tr class="hover:bg-slate-50">
+                                        <td class="px-2 py-2 font-medium">${name}</td>
+                                        <td class="px-2 py-2">${row.roll_number || '--'}</td>
+                                        <td class="px-2 py-2">${formatAttendanceTime(row.entry_time)}</td>
+                                        <td class="px-2 py-2 capitalize">${status}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function loadAttendanceToday() {
+            try {
+                const response = await fetch('/api/attendance/today');
+                const rows = await response.json();
+                renderAttendanceTable(Array.isArray(rows) ? rows : []);
+            } catch (error) {
+                document.getElementById('recentAttendance').innerHTML = '<div class="text-rose-600">Failed to load today\'s attendance.</div>';
+            }
+        }
+
         document.getElementById('checkinForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const studentIdValue = document.getElementById('studentId').value.trim();
@@ -287,11 +357,15 @@
             await startCameraAndRecognition();
         });
 
+        document.getElementById('refreshAttendanceBtn').addEventListener('click', loadAttendanceToday);
+
         setInterval(() => {
             document.getElementById('clock').textContent = new Date().toLocaleTimeString();
         }, 1000);
 
         window.addEventListener('beforeunload', stopCameraAndReset);
+
+        loadAttendanceToday();
     </script>
 </body>
 <script>
