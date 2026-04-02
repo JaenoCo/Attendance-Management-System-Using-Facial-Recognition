@@ -30,6 +30,18 @@ if 'last_face_capture' not in existing_cols:
     conn.commit()
     print("✓ Added last_face_capture")
 
+if 'face_registered' not in existing_cols:
+    print("Adding face_registered...")
+    cursor.execute("ALTER TABLE students ADD face_registered TINYINT(1) NOT NULL DEFAULT 0")
+    conn.commit()
+    print("✓ Added face_registered")
+
+if 'face_data' not in existing_cols:
+    print("Adding face_data...")
+    cursor.execute("ALTER TABLE students ADD face_data LONGTEXT")
+    conn.commit()
+    print("✓ Added face_data")
+
 cursor.close()
 conn.close()
 print("\n✓ Database fix complete!")

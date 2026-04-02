@@ -38,6 +38,18 @@ try:
         print('[OK] Added last_face_capture column')
     else:
         print('[SKIP] last_face_capture column already exists')
+
+    if 'face_registered' not in col_names:
+        cursor.execute('ALTER TABLE students ADD COLUMN face_registered TINYINT(1) NOT NULL DEFAULT 0')
+        print('[OK] Added face_registered column')
+    else:
+        print('[SKIP] face_registered column already exists')
+
+    if 'face_data' not in col_names:
+        cursor.execute('ALTER TABLE students ADD COLUMN face_data LONGTEXT')
+        print('[OK] Added face_data column')
+    else:
+        print('[SKIP] face_data column already exists')
     
     conn.commit()
     cursor.close()

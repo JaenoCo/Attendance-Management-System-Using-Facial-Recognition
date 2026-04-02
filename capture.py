@@ -3,6 +3,7 @@ import cv2
 import os
 import sys
 import pickle
+import argparse
 import numpy as np
 
 # Try to import config, fallback to defaults if not found
@@ -27,6 +28,11 @@ if not os.path.exists(detector_proto) or not os.path.exists(detector_model):
 
 print("[INFO] Loading face detector...")
 detector = cv2.dnn.readNetFromCaffe(detector_proto, detector_model)
+
+parser = argparse.ArgumentParser(description="Face capture utility")
+parser.add_argument("student_id", nargs="?", default="sameer", help="Student ID or capture folder name")
+args = parser.parse_args()
+capture_dir = os.path.join("dataset", str(args.student_id))
 
 # Load face embedder
 embedder_path = "openface_nn4.small2.v1.t7"
@@ -71,7 +77,7 @@ img_counter = 0
 
 print("[INFO] Camera started")
 print("[INFO] Instructions:")
-print("  - SPACE: Capture frame to dataset/sameer/")
+print(f"  - SPACE: Capture frame to {capture_dir}/")
 print("  - ESC: Exit")
 print(f"  - Confidence threshold: {CONFIDENCE_THRESHOLD*100:.0f}%")
 
@@ -167,9 +173,9 @@ while True:
     elif k % 256 == 32:
         # SPACE pressed
         # Create directory if it doesn't exist
-        os.makedirs("dataset/sameer", exist_ok=True)
+        os.makedirs(capture_dir, exist_ok=True)
         img_name = "opencv_frame_{}.png".format(img_counter)
-        cv2.imwrite(os.path.join("dataset/sameer", img_name), frame)
+        cv2.imwrite(os.path.join(capture_dir, img_name), frame)
         print(f"[SUCCESS] {img_name} captured and saved!")
         img_counter += 1
 

@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS students (
     roll_number VARCHAR(50) UNIQUE NOT NULL,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
+    face_registered TINYINT(1) NOT NULL DEFAULT 0,
+    face_data LONGTEXT,
     face_image_path VARCHAR(255),
     class_id INT,
     date_of_admission DATE,

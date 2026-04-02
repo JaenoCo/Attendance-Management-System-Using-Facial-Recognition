@@ -42,10 +42,9 @@
         <h2 class="font-semibold">Face Attendance Controls</h2>
         <div class="mt-4 space-y-3">
             <div>
-                <label class="block text-sm mb-1">Select Student</label>
-                <select id="studentSelect" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
+                <p class="text-sm mb-1 font-medium">Auto Recognition</p>
+                <p class="text-sm text-slate-600">No student selection required — capture a face and the system will try to recognize and mark attendance automatically.</p>
             </div>
-            <p class="text-xs text-slate-500">Choose a student and capture a clear front-facing image.</p>
         </div>
 
         <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm">
@@ -61,6 +60,13 @@
         <div class="mt-3 rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-xs text-indigo-700">
             Capture quality improves when face is centered and well-lit.
         </div>
+        
+        <div class="mt-4">
+            <h3 class="text-sm font-semibold">Recent Check-ins</h3>
+            <div id="recentAttendance" class="mt-2 text-sm">
+                <div class="text-slate-500">Loading...</div>
+            </div>
+        </div>
     </article>
 </section>
 {% endblock %}
@@ -71,7 +77,10 @@
         stream: null,
         detectTimer: null,
         detections: [],
-        running: false
+        running: false,
+        processing: false,
+        lastRecognitionTime: 0,
+        recognitionCooldownMs: 30000
     };
 
     const video = document.getElementById('enrollVideo');
@@ -124,20 +133,13 @@
         return temp.toDataURL('image/jpeg', 0.92);
     }
 
-    async function loadStudents() {
-        const students = await apiFetch('/api/students');
-        const options = ['<option value="">Select student</option>'];
-        students.forEach((student) => {
-            const name = `${student.first_name || ''} ${student.last_name || ''}`.trim();
-            options.push(`<option value="${student.student_id}">${name} (${student.roll_number || '--'})</option>`);
-        });
-        document.getElementById('studentSelect').innerHTML = options.join('');
-    }
+    // removed student selection — recognition is automatic against enrolled students
 
     async function detectFaces() {
         if (!state.running || !video.videoWidth) {
             return;
         }
+
         try {
             document.getElementById('scanIndicator').classList.remove('hidden');
             document.getElementById('detectionStatus').textContent = 'Scanning...';
@@ -147,13 +149,72 @@
                 body: JSON.stringify({ image: frameToDataUrl() })
             });
             state.detections = response.faces || [];
-            document.getElementById('detectionStatus').textContent = state.detections.length
-                ? `${state.detections.length} face(s) detected`
+            const detectedCount = state.detections.length;
+            document.getElementById('detectionStatus').textContent = detectedCount
+                ? `${detectedCount} face(s) detected`
                 : 'No face detected';
-            document.getElementById('faceIndicator').classList.toggle('hidden', state.detections.length === 0);
-            setProgress(state.detections.length ? 55 : 18);
+            document.getElementById('faceIndicator').classList.toggle('hidden', detectedCount === 0);
+            setProgress(detectedCount ? 55 : 18);
             drawOverlay();
-        } catch {
+
+            // Auto-recognize and check-in when a face is detected
+            const now = Date.now();
+            if (detectedCount > 0 && !state.processing && now - state.lastRecognitionTime > state.recognitionCooldownMs) {
+                state.processing = true;
+                try {
+                    document.getElementById('enrollStatus').textContent = 'Recognizing...';
+                    const image = frameToDataUrl();
+                    const resp = await fetch('/api/attendance/recognize-face', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image })
+                    });
+                    const data = await resp.json();
+
+                    state.detections = data.faces || [];
+                    drawOverlay();
+
+                    if (data.recognized && data.student) {
+                        const student = data.student;
+                        document.getElementById('enrollStatus').textContent = `Recognized: ${student.name}`;
+                        setProgress(85);
+
+                        // perform check-in using roll number if available, else id
+                        const checkinForm = new FormData();
+                        checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                        const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
+                        const checkData = await checkResp.json();
+
+                        if (checkResp.ok && checkData.status === 'success') {
+                            document.getElementById('enrollStatus').textContent = checkData.message || 'Attendance marked';
+                            setProgress(100);
+                            notify(checkData.message || 'Attendance marked', 'success');
+                            await loadAttendanceToday();
+                        } else if (checkData.status === 'warning') {
+                            document.getElementById('enrollStatus').textContent = checkData.message || 'Already present';
+                            setProgress(100);
+                            notify(checkData.message || 'Already present', 'warning');
+                            await loadAttendanceToday();
+                        } else {
+                            document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
+                            setProgress(45);
+                            notify(checkData.message || 'Check-in failed', 'error');
+                        }
+
+                        state.lastRecognitionTime = Date.now();
+                    } else {
+                        document.getElementById('enrollStatus').textContent = data.message || 'Face not recognized';
+                        setProgress(30);
+                        notify(data.message || 'Face not recognized', 'error');
+                    }
+                } catch (err) {
+                    notify(`Recognition failed: ${err.message}`, 'error');
+                    document.getElementById('enrollStatus').textContent = 'Recognition unavailable';
+                } finally {
+                    state.processing = false;
+                }
+            }
+        } catch (err) {
             state.detections = [];
             document.getElementById('faceIndicator').classList.add('hidden');
             document.getElementById('detectionStatus').textContent = 'Detection unavailable';
@@ -211,51 +272,122 @@
     }
 
     async function captureFace() {
-        const studentId = document.getElementById('studentSelect').value;
-        if (!studentId) {
-            notify('Select a student first', 'error');
-            return;
-        }
         if (!state.running) {
             notify('Start camera first', 'error');
             return;
         }
 
         try {
-            document.getElementById('enrollStatus').textContent = 'Capturing...';
-            setProgress(80);
-            const body = new FormData();
-            body.append('student_id', studentId);
-            body.append('image_data', frameToDataUrl());
-            const response = await apiFetch('/api/face/capture', { method: 'POST', body });
-            if (response.status === 'success') {
-                document.getElementById('enrollStatus').textContent = 'Capture successful. Face data saved.';
-                setProgress(100);
-                notify('Face captured successfully', 'success');
+            document.getElementById('enrollStatus').textContent = 'Recognizing...';
+            setProgress(60);
+
+            const image = frameToDataUrl();
+            const resp = await fetch('/api/attendance/recognize-face', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image })
+            });
+            const data = await resp.json();
+
+            // draw any returned bounding boxes
+            state.detections = data.faces || [];
+            drawOverlay();
+
+            if (data.recognized && data.student) {
+                const student = data.student;
+                document.getElementById('enrollStatus').textContent = `Recognized: ${student.name}`;
+                setProgress(85);
+
+                // perform check-in using roll number if available, else id
+                const checkinForm = new FormData();
+                checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
+                const checkData = await checkResp.json();
+
+                if (checkResp.ok && checkData.status === 'success') {
+                    document.getElementById('enrollStatus').textContent = checkData.message || 'Attendance marked';
+                    setProgress(100);
+                    notify(checkData.message || 'Attendance marked', 'success');
+                    // refresh recent attendance list
+                    await loadAttendanceToday();
+                } else if (checkData.status === 'warning') {
+                    document.getElementById('enrollStatus').textContent = checkData.message || 'Already present';
+                    setProgress(100);
+                    notify(checkData.message || 'Already present', 'warning');
+                    await loadAttendanceToday();
+                } else {
+                    document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
+                    setProgress(45);
+                    notify(checkData.message || 'Check-in failed', 'error');
+                }
+
+                // Optionally stop camera after a successful recognition
+                // stopCamera();
             } else {
-                document.getElementById('enrollStatus').textContent = response.message || 'Capture failed';
-                setProgress(45);
-                notify(response.message || 'Capture failed', 'error');
+                document.getElementById('enrollStatus').textContent = data.message || 'Face not recognized';
+                setProgress(30);
+                notify(data.message || 'Face not recognized', 'error');
             }
         } catch (err) {
-            setProgress(35);
-            notify(`Capture failed: ${err.message}`, 'error');
+            setProgress(20);
+            notify(`Recognition failed: ${err.message}`, 'error');
+            document.getElementById('enrollStatus').textContent = 'Recognition unavailable';
+        }
+    }
+
+    function formatTime(value) {
+        if (!value) return '--';
+        try {
+            return new Date(value).toLocaleTimeString();
+        } catch {
+            return value;
+        }
+    }
+
+    function renderAttendanceTable() {
+        const container = document.getElementById('recentAttendance');
+        // only show records that have an entry_time (i.e. actual check-ins)
+        const presentRows = (state.attendance || []).filter(r => r.entry_time).slice(0, 10);
+        if (!presentRows.length) {
+            container.innerHTML = '<div class="text-slate-500">No check-ins yet today.</div>';
+            return;
+        }
+
+        const table = [`<div class="overflow-x-auto"><table class="min-w-full text-sm border-separate border-spacing-y-2"><thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-2 py-2 font-medium">Student</th><th class="text-left px-2 py-2 font-medium">Roll</th><th class="text-left px-2 py-2 font-medium">Date</th><th class="text-left px-2 py-2 font-medium">Time</th></tr></thead><tbody>`];
+        presentRows.forEach(r => {
+            const name = `${r.first_name || ''} ${r.last_name || ''}`.trim() || '--';
+            const date = r.attendance_date || '';
+            table.push(`<tr class="hover:bg-slate-50"><td class="px-2 py-2">${name}</td><td class="px-2 py-2">${r.roll_number || '--'}</td><td class="px-2 py-2">${date}</td><td class="px-2 py-2">${formatTime(r.entry_time)}</td></tr>`);
+        });
+        table.push('</tbody></table></div>');
+        container.innerHTML = table.join('');
+    }
+
+    async function loadAttendanceToday() {
+        try {
+            state.attendance = await apiFetch('/api/attendance/today') || [];
+            renderAttendanceTable();
+        } catch (err) {
+            document.getElementById('recentAttendance').innerHTML = `<div class="text-rose-600">Failed loading attendance</div>`;
         }
     }
 
     document.getElementById('startCameraBtn').addEventListener('click', startCamera);
     document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
-    document.getElementById('captureFaceBtn').addEventListener('click', captureFace);
+    // manual capture disabled - auto-checkin on detection
+    const captureBtn = document.getElementById('captureFaceBtn');
+    if (captureBtn) {
+        captureBtn.style.display = 'none';
+    }
 
     window.addEventListener('beforeunload', stopCamera);
     window.addEventListener('resize', drawOverlay);
 
-    (async function init() {
-        try {
-            await loadStudents();
-        } catch (err) {
-            notify(`Failed loading students: ${err.message}`, 'error');
-        }
+    (function init() {
+        // No student selection required for auto recognition
     })();
+    // load recent attendance and poll
+    loadAttendanceToday();
+    setInterval(loadAttendanceToday, 15000);
 </script>
 {% endblock %}

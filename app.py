@@ -94,6 +94,8 @@ def run_auto_training():
 async def startup_event():
     """Connect to database on startup and start scheduler"""
     db.connect()
+    _ensure_student_face_columns()
+    _sync_face_capture_records_from_dataset()
     
     # Schedule auto-training to run daily at 11 PM (23:00)
     scheduler.add_job(
@@ -230,6 +232,246 @@ def _find_student_by_label(students, predicted_label):
     return None
 
 
+def _find_student_by_label_fallback(cursor, predicted_label):
+    """Try a direct database lookup when label tokens do not match exactly."""
+    normalized_label = _normalize_identity_value(predicted_label)
+    if not normalized_label:
+        return None
+
+    try:
+        cursor.execute(
+            """
+            SELECT student_id, roll_number, first_name, last_name, COALESCE(faces_captured, 0) AS faces_captured, face_training_status
+            FROM students
+            WHERE CAST(student_id AS CHAR) = %s
+               OR roll_number = %s
+               OR LOWER(CONCAT(first_name, ' ', last_name)) = %s
+               OR LOWER(first_name) = %s
+               OR LOWER(last_name) = %s
+            LIMIT 1
+            """,
+            (
+                normalized_label,
+                normalized_label,
+                normalized_label,
+                normalized_label,
+                normalized_label,
+            )
+        )
+        return cursor.fetchone()
+    except Exception:
+        return None
+
+
+def _find_student_by_capture_similarity(cursor, fr_system, live_embedding, min_similarity=FACE_MATCH_SIMILARITY_THRESHOLD, max_samples=50):
+    """Match a live embedding against stored enrollment captures as a fallback."""
+    if cursor is None or fr_system is None or live_embedding is None:
+        return None, 0.0
+
+    try:
+        cursor.execute(
+            """
+            SELECT fc.student_id, fc.image_path, s.roll_number, s.first_name, s.last_name,
+                   COALESCE(s.faces_captured, 0) AS faces_captured,
+                   s.face_training_status
+            FROM face_captures fc
+            INNER JOIN students s ON s.student_id = fc.student_id
+            ORDER BY fc.captured_at DESC, fc.capture_id DESC
+            LIMIT %s
+            """,
+            (max_samples,)
+        )
+        rows = cursor.fetchall() or []
+    except Exception:
+        return None, 0.0
+
+    embeddings_by_student = {}
+    student_rows = {}
+    for row in rows:
+        student_id = row.get('student_id')
+        image_path = row.get('image_path')
+        if not image_path:
+            continue
+
+        capture_path = Path(image_path)
+        if not capture_path.exists():
+            capture_path = Path.cwd() / image_path
+        if not capture_path.exists():
+            continue
+
+        stored_image = cv2.imread(str(capture_path))
+        if stored_image is None:
+            continue
+
+        stored_result = fr_system.capture_face_from_image(stored_image, min_confidence=LIVE_FACE_DETECTION_THRESHOLD)
+        if stored_result.get('status') != 'success':
+            continue
+
+        stored_embedding = _to_flat_embedding(stored_result.get('embedding'))
+        if stored_embedding is None:
+            continue
+
+        embeddings_by_student.setdefault(student_id, []).append(stored_embedding)
+        if student_id not in student_rows:
+            student_rows[student_id] = {
+                'student_id': row.get('student_id'),
+                'roll_number': row.get('roll_number'),
+                'first_name': row.get('first_name'),
+                'last_name': row.get('last_name'),
+                'faces_captured': row.get('faces_captured'),
+                'face_training_status': row.get('face_training_status')
+            }
+
+    best_student = None
+    best_similarity = 0.0
+
+    for student_id, student_embeddings in embeddings_by_student.items():
+        if not student_embeddings:
+            continue
+
+        stacked = np.vstack(student_embeddings)
+        centroid = stacked.mean(axis=0)
+        similarity = _cosine_similarity(live_embedding, centroid)
+
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_student = student_rows.get(student_id)
+
+    if best_student and best_similarity >= min_similarity:
+        return best_student, best_similarity
+
+    return None, 0.0
+
+
+def _ensure_student_face_columns():
+    """Add optional face-recognition columns if the live database is missing them."""
+    if not db.connection:
+        return
+
+    cursor = None
+    try:
+        cursor = db.connection.cursor()
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'students'
+            """,
+            (DATABASE_CONFIG['database'],)
+        )
+        existing_columns = {row[0] for row in cursor.fetchall()}
+
+        required_columns = [
+            ('face_registered', "ALTER TABLE students ADD COLUMN face_registered TINYINT(1) NOT NULL DEFAULT 0"),
+            ('face_data', "ALTER TABLE students ADD COLUMN face_data LONGTEXT")
+        ]
+
+        for column_name, alter_sql in required_columns:
+            if column_name not in existing_columns:
+                print(f"[INFO] Adding missing students.{column_name} column")
+                cursor.execute(alter_sql)
+                db.connection.commit()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure face columns: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+
+
+def _dataset_image_paths_for_student(student_id):
+    """Return readable image files already stored for a student."""
+    dataset_dir = Path('dataset') / str(student_id)
+    if not dataset_dir.exists() or not dataset_dir.is_dir():
+        return []
+
+    allowed_suffixes = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif', '.tif', '.tiff'}
+    image_paths = []
+    for path in dataset_dir.iterdir():
+        if path.is_file() and path.suffix.lower() in allowed_suffixes:
+            image_paths.append(path)
+
+    image_paths.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return image_paths
+
+
+def _sync_face_capture_records_from_dataset(student_id=None):
+    """Backfill face capture rows and capture counters from the dataset folder."""
+    if not db.connection:
+        return
+
+    cursor = None
+    try:
+        cursor = db.connection.cursor(dictionary=True)
+
+        if student_id is None:
+            cursor.execute("SELECT student_id FROM students")
+            student_ids = [row['student_id'] for row in cursor.fetchall() or []]
+        else:
+            student_ids = [student_id]
+
+        for sid in student_ids:
+            image_paths = _dataset_image_paths_for_student(sid)
+            if not image_paths:
+                continue
+
+            cursor.execute(
+                """
+                SELECT image_path
+                FROM face_captures
+                WHERE student_id = %s
+                """,
+                (sid,)
+            )
+            existing_paths = {str(row.get('image_path') or '').replace('\\', '/') for row in cursor.fetchall() or []}
+
+            changed = False
+            for path in image_paths:
+                normalized_path = str(path).replace('\\', '/')
+                if normalized_path in existing_paths:
+                    continue
+
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO face_captures (student_id, image_path, quality_score, is_used_for_training)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (sid, normalized_path, 1.0, False)
+                    )
+                    changed = True
+                except Exception as e:
+                    print(f"[WARNING] Could not backfill face_captures for student {sid}: {e}")
+
+            image_count = len(image_paths)
+            if image_count > 0:
+                try:
+                    cursor.execute(
+                        """
+                        UPDATE students
+                        SET faces_captured = GREATEST(COALESCE(faces_captured, 0), %s),
+                            face_registered = 1,
+                            face_training_status = CASE
+                                WHEN face_training_status = 'trained' THEN 'trained'
+                                ELSE 'needs_retrain'
+                            END,
+                            last_face_capture = COALESCE(last_face_capture, NOW())
+                        WHERE student_id = %s
+                        """,
+                        (image_count, sid)
+                    )
+                    changed = True
+                except Exception as e:
+                    print(f"[WARNING] Could not backfill student {sid} capture metadata: {e}")
+
+            if changed:
+                db.connection.commit()
+    except Exception as e:
+        print(f"[WARNING] Could not sync face captures from dataset: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+
+
 def _save_capture_image(student_id, image_array):
     """Persist a captured frame under dataset/<student_id>/ and return relative path."""
     dataset_dir = Path('dataset') / str(student_id)
@@ -262,51 +504,25 @@ def _upsert_student_face_enrollment(student_id, new_embedding, image_array=None)
         cursor = db.connection.cursor(dictionary=True)
         cursor.execute(
             """
-            SELECT face_data, COALESCE(faces_captured, 0) AS faces_captured
+            SELECT COALESCE(faces_captured, 0) AS faces_captured
             FROM students
             WHERE student_id = %s
             """,
             (student_id,)
         )
         existing = cursor.fetchone() or {}
-
-        existing_embedding = None
-        try:
-            existing_embedding = _to_flat_embedding(existing.get('face_data'))
-        except Exception:
-            existing_embedding = None
-
         existing_count = int(existing.get('faces_captured') or 0)
-        if existing_embedding is not None and existing_embedding.shape == merged_embedding.shape and existing_count > 0:
-            merged_embedding = ((existing_embedding * existing_count) + merged_embedding) / (existing_count + 1)
-
-        embedding_json = json.dumps(merged_embedding.tolist())
-
-        try:
-            cursor.execute(
-                """
-                UPDATE students
-                SET face_registered = 1,
-                    face_data = %s,
-                    faces_captured = COALESCE(faces_captured, 0) + 1,
-                    last_face_capture = NOW(),
-                    face_training_status = 'needs_retrain'
-                WHERE student_id = %s
-                """,
-                (embedding_json, student_id)
-            )
-            captures_count = existing_count + 1
-        except Exception:
-            # Fallback for older schema where optional face tracking columns are not present.
-            cursor.execute(
-                """
-                UPDATE students
-                SET face_registered = 1,
-                    face_data = %s
-                WHERE student_id = %s
-                """,
-                (embedding_json, student_id)
-            )
+        cursor.execute(
+            """
+            UPDATE students
+            SET faces_captured = COALESCE(faces_captured, 0) + 1,
+                last_face_capture = NOW(),
+                face_training_status = 'needs_retrain'
+            WHERE student_id = %s
+            """,
+            (student_id,)
+        )
+        captures_count = existing_count + 1
 
         db.connection.commit()
 
@@ -542,7 +758,7 @@ async def get_today_attendance():
         cursor = db.connection.cursor(dictionary=True)
         cursor.execute("""
             SELECT s.student_id, s.roll_number, s.first_name, s.last_name, 
-                   c.class_name, al.entry_time, al.exit_time, al.status
+                   c.class_name, al.entry_time, al.exit_time, al.status, al.date as attendance_date
             FROM students s
             LEFT JOIN classes c ON s.class_id = c.class_id
             LEFT JOIN attendance_logs al ON s.student_id = al.student_id AND al.date = %s
@@ -556,6 +772,9 @@ async def get_today_attendance():
                 record['entry_time'] = record['entry_time'].isoformat()
             if record.get('exit_time'):
                 record['exit_time'] = record['exit_time'].isoformat()
+            if record.get('attendance_date'):
+                # return date as ISO string (YYYY-MM-DD)
+                record['attendance_date'] = record['attendance_date'].isoformat()
         
         return attendance
     except Exception as e:
@@ -1099,10 +1318,10 @@ async def get_face_enrollment_status(request: Request, student_id: int = Query(.
     try:
         cursor = db.connection.cursor(dictionary=True)
         cursor.execute("""
-            SELECT student_id,
-                   CONCAT(first_name, ' ', last_name) AS name,
-                   face_registered,
-                   face_data
+             SELECT student_id,
+                 CONCAT(first_name, ' ', last_name) AS name,
+                   COALESCE(faces_captured, 0) AS faces_captured,
+                   face_training_status
             FROM students
             WHERE student_id = %s
         """, (student_id,))
@@ -1116,8 +1335,8 @@ async def get_face_enrollment_status(request: Request, student_id: int = Query(.
             'status': 'success',
             'student_id': student['student_id'],
             'name': student['name'],
-            'face_registered': bool(student.get('face_registered', 0)),
-            'has_embedding': student.get('face_data') is not None
+            'faces_captured': int(student.get('faces_captured') or 0),
+            'has_embedding': int(student.get('faces_captured') or 0) > 0 or str(student.get('face_training_status') or '').lower() == 'trained'
         }
     
     except Exception as e:
@@ -1138,7 +1357,7 @@ async def get_face_enrollment_stats(request: Request):
         cursor.execute("SELECT COUNT(*) as total FROM students")
         total_students = cursor.fetchone()['total']
         
-        cursor.execute("SELECT COUNT(*) as enrolled FROM students WHERE face_registered = 1")
+        cursor.execute("SELECT COUNT(*) as enrolled FROM students WHERE face_training_status = 'trained'")
         enrolled_students = cursor.fetchone()['enrolled']
         
         cursor.close()
@@ -1224,8 +1443,7 @@ async def register_student(
         
         # Check if student already exists
         cursor.execute("SELECT student_id FROM students WHERE roll_number = %s", (roll_number,))
-        if cursor.fetchone():
-            return JSONResponse(
+push             return JSONResponse(
                 {'status': 'error', 'message': 'Student with this ID already exists'},
                 status_code=400
             )
@@ -1291,7 +1509,7 @@ async def capture_face_admin(student_id: int = Form(...)):
             # Note: capture.py will save images to dataset folder
             # We just need to inform it to save to the right location
             subprocess.Popen(
-                [sys.executable, 'capture.py'],
+                [sys.executable, 'capture.py', str(student_id)],
                 cwd=os.getcwd(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
@@ -1497,7 +1715,6 @@ async def recognize_face_endpoint(request: Request):
         # Remove data:image/jpeg;base64, prefix if present
         if ',' in image_data:
             image_data = image_data.split(',')[1]
-        
         image_bytes = base64.b64decode(image_data)
         nparr = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -1558,50 +1775,43 @@ async def recognize_face_endpoint(request: Request):
                 'faces': faces_payload
             })
 
+        _sync_face_capture_records_from_dataset()
+
         cursor = db.connection.cursor(dictionary=True)
 
         cursor.execute("""
-            SELECT student_id, roll_number, first_name, last_name, face_data
+            SELECT student_id, roll_number, first_name, last_name, faces_captured, face_training_status
             FROM students
-            WHERE face_registered = 1
+            WHERE face_training_status = 'trained' OR COALESCE(faces_captured, 0) > 0
         """)
         enrolled_students = cursor.fetchall() or []
 
         student = None
-        best_similarity = -1.0
         model_probability = 0.0
+        capture_similarity = 0.0
 
         # Preferred path: recognizer model trained on captured dataset images.
         try:
             model_label, model_probability = fr_system.recognize_face(live_embedding.reshape(1, -1))
-            if model_label and model_probability >= max(CONFIDENCE_THRESHOLD, 0.5):
+            if model_label and model_probability >= CONFIDENCE_THRESHOLD:
                 student = _find_student_by_label(enrolled_students, model_label)
+                if student is None:
+                    student = _find_student_by_label_fallback(cursor, model_label)
         except Exception:
             student = None
 
-        # Fallback path: direct cosine similarity against stored enrollment embeddings.
-        if student is None:
-            students_with_embeddings = [s for s in enrolled_students if s.get('face_data') is not None]
-            for candidate in students_with_embeddings:
-                try:
-                    candidate_embedding = _to_flat_embedding(candidate.get('face_data'))
-                except Exception:
-                    candidate_embedding = None
+        fallback_student, fallback_similarity = _find_student_by_capture_similarity(
+            cursor,
+            fr_system,
+            live_embedding,
+            min_similarity=FACE_MATCH_SIMILARITY_THRESHOLD
+        )
 
-                if candidate_embedding is None:
-                    continue
+        if fallback_student and (student is None or fallback_similarity >= model_probability):
+            student = fallback_student
+            capture_similarity = fallback_similarity
+            model_probability = fallback_similarity
 
-                if candidate_embedding.shape != live_embedding.shape:
-                    continue
-
-                similarity = _cosine_similarity(live_embedding, candidate_embedding)
-                if similarity > best_similarity:
-                    best_similarity = similarity
-                    student = candidate
-
-            if best_similarity < FACE_MATCH_SIMILARITY_THRESHOLD:
-                student = None
-        
         if student:
             return JSONResponse({
                 'status': 'success',
@@ -1612,7 +1822,8 @@ async def recognize_face_endpoint(request: Request):
                     'name': f"{student['first_name']} {student['last_name']}",
                     'roll_number': student['roll_number']
                 },
-                'confidence': float(best_similarity if best_similarity > -1 else model_probability),
+                'confidence': float(model_probability),
+                'capture_similarity': float(capture_similarity),
                 'faces': faces_payload
             })
         else:
@@ -1620,7 +1831,8 @@ async def recognize_face_endpoint(request: Request):
                 'status': 'error',
                 'message': 'Face does not match any registered student capture',
                 'recognized': False,
-                'confidence': float(best_similarity if best_similarity > -1 else model_probability),
+                'confidence': float(model_probability),
+                'capture_similarity': float(capture_similarity),
                 'faces': faces_payload
             })
         

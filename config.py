@@ -15,7 +15,8 @@ RECOGNIZER_MODEL = 'output/recognizer.pickle'
 LABEL_ENCODER = 'output/le.pickle'
 
 # Recognition Confidence Threshold
-CONFIDENCE_THRESHOLD = 0.5
+# Lowered detection threshold to improve face detection in varied lighting/angles
+CONFIDENCE_THRESHOLD = 0.35
 FACE_MIN_WIDTH = 20
 FACE_MIN_HEIGHT = 20
 
