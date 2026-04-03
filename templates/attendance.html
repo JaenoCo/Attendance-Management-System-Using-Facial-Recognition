@@ -1,158 +1,145 @@
 {% extends "base.html" %}
 
-{% block title %}Attendance - School Attendance System{% endblock %}
+{% block title %}Attendance - Attendance System{% endblock %}
+{% block page_name %}attendance{% endblock %}
+{% block page_header %}Attendance{% endblock %}
 
 {% block content %}
-<h2><i class="bi bi-check-square"></i> Attendance Management</h2>
-<hr>
-
-<div class="row mb-4">
-    <div class="col-md-4">
-        <select class="form-control" id="class-filter">
-            <option value="">All Classes</option>
-        </select>
-    </div>
-    <div class="col-md-4">
-        <input type="date" class="form-control" id="date-filter" value="">
-    </div>
-    <div class="col-md-4">
-        <button class="btn btn-custom btn-block" onclick="loadAttendance()">
-            <i class="bi bi-search"></i> Filter
+<section class="bg-white/95 border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <input id="attendanceDate" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+            <select id="attendanceStatus" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                <option value="">All Status</option>
+                <option value="present">Present</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+            </select>
+        </div>
+        <button id="refreshAttendance" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582M20 20v-5h-.581M5.203 9A7.5 7.5 0 0119.5 12.5M18.797 15A7.5 7.5 0 014.5 11.5"/></svg>
+            Refresh
         </button>
     </div>
-</div>
 
-<div class="card">
-    <div class="card-header">
-        <h5>Attendance Log</h5>
+    <div class="mt-4 overflow-x-auto">
+        <table class="min-w-full text-sm border-separate border-spacing-y-2">
+            <thead class="bg-slate-50 text-slate-600">
+                <tr>
+                    <th class="text-left px-4 py-3 font-medium">Student</th>
+                    <th class="text-left px-4 py-3 font-medium">Roll Number</th>
+                    <th class="text-left px-4 py-3 font-medium">Class</th>
+                    <th class="text-left px-4 py-3 font-medium">Entry Time</th>
+                    <th class="text-left px-4 py-3 font-medium">Exit Time</th>
+                    <th class="text-left px-4 py-3 font-medium">Status</th>
+                </tr>
+            </thead>
+            <tbody id="attendanceBody">
+                <tr>
+                    <td class="px-4 py-3" colspan="6"><div class="skeleton h-11 rounded-xl"></div></td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3" colspan="6"><div class="skeleton h-11 rounded-xl"></div></td>
+                </tr>
+            </tbody>
+        </table>
     </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped table-hover" id="attendance-table">
-                <thead class="table-light">
-                    <tr>
-                        <th>Roll No</th>
-                        <th>Name</th>
-                        <th>Class</th>
-                        <th>Entry Time</th>
-                        <th>Exit Time</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Will be populated by JavaScript -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Attendance Modal -->
-<div class="modal fade" id="attendanceModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Attendance</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="attendanceForm">
-                    <div class="mb-3">
-                        <label class="form-label">Student Name</label>
-                        <input type="text" class="form-control" id="att-student-name" disabled>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Entry Time</label>
-                        <input type="time" class="form-control" id="att-entry-time">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Exit Time</label>
-                        <input type="time" class="form-control" id="att-exit-time">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Status</label>
-                        <select class="form-control" id="att-status">
-                            <option value="present">Present</option>
-                            <option value="absent">Absent</option>
-                            <option value="late">Late</option>
-                            <option value="leave">Leave</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Remarks</label>
-                        <textarea class="form-control" id="att-remarks"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-custom" onclick="saveAttendance()">Save</button>
-            </div>
-        </div>
-    </div>
-</div>
-
+</section>
 {% endblock %}
 
-{% block extra_js %}
+{% block page_scripts %}
 <script>
-    let attendanceModal;
+    const attendanceState = {
+        rows: []
+    };
 
-    $(document).ready(function() {
-        attendanceModal = new bootstrap.Modal(document.getElementById('attendanceModal'));
-        document.getElementById('date-filter').valueAsDate = new Date();
-        loadClasses();
-        loadAttendance();
+    function formatTime(value) {
+        if (!value) {
+            return '--';
+        }
+        try {
+            return new Date(value).toLocaleTimeString();
+        } catch {
+            return value;
+        }
+    }
+
+    function renderAttendance() {
+        const statusFilter = document.getElementById('attendanceStatus').value;
+        const filtered = attendanceState.rows.filter((row) => {
+            if (!statusFilter) {
+                return true;
+            }
+            return String(row.status || '').toLowerCase() === statusFilter;
+        });
+
+        const rows = filtered.map((row) => {
+            const student = `${row.first_name || ''} ${row.last_name || ''}`.trim() || '--';
+            const status = String(row.status || 'pending').toLowerCase();
+            return `
+                <tr class="hover:-translate-y-0.5 transition-transform duration-200">
+                    <td class="px-4 py-3 font-medium bg-slate-50 rounded-l-xl border-y border-l border-slate-200">${student}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${row.roll_number || '--'}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${row.class_name || '--'}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${formatTime(row.entry_time)}</td>
+                    <td class="px-4 py-3 text-slate-600 bg-slate-50 border-y border-slate-200">${formatTime(row.exit_time)}</td>
+                    <td class="px-4 py-3 bg-slate-50 rounded-r-xl border-y border-r border-slate-200"><span class="inline-flex px-2 py-1 text-xs rounded-full font-medium ${statusBadge(status)}">${status}</span></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('attendanceBody').innerHTML = rows.length
+            ? rows.join('')
+            : '<tr><td class="px-4 py-4 text-slate-500" colspan="6">No attendance data for selected filter.</td></tr>';
+    }
+
+    async function loadAttendance() {
+        const selectedDate = document.getElementById('attendanceDate').value;
+        const today = new Date().toISOString().slice(0, 10);
+
+        // The API currently supports detailed daily list for today only.
+        if (selectedDate && selectedDate !== today) {
+            attendanceState.rows = [];
+            renderAttendance();
+            notify('Showing real-time records for today only in this view.', 'info');
+            return;
+        }
+
+        attendanceState.rows = await apiFetch('/api/attendance/today');
+        renderAttendance();
+    }
+
+    document.getElementById('attendanceDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('refreshAttendance').addEventListener('click', async () => {
+        try {
+            await loadAttendance();
+            notify('Attendance updated', 'success');
+        } catch (err) {
+            notify(`Refresh failed: ${err.message}`, 'error');
+        }
+    });
+    document.getElementById('attendanceStatus').addEventListener('change', renderAttendance);
+    document.getElementById('attendanceDate').addEventListener('change', async () => {
+        try {
+            await loadAttendance();
+        } catch (err) {
+            notify(`Date filter failed: ${err.message}`, 'error');
+        }
     });
 
-    function loadClasses() {
-        $.get('/api/classes', function(data) {
-            const select = $('#class-filter');
-            data.forEach(cls => {
-                select.append(`<option value="${cls.class_id}">${cls.class_name}</option>`);
-            });
-        });
-    }
-
-    function loadAttendance() {
-        $.get('/api/attendance/today', function(data) {
-            const tbody = $('#attendance-table tbody');
-            tbody.empty();
-
-            data.forEach(record => {
-                const statusBadge = `<span class="badge badge-${record.status}">${record.status}</span>`;
-                const row = `
-                    <tr>
-                        <td>${record.roll_number}</td>
-                        <td>${record.first_name} ${record.last_name}</td>
-                        <td>${record.class_name || 'N/A'}</td>
-                        <td>${record.entry_time ? record.entry_time.substr(0, 5) : '-'}</td>
-                        <td>${record.exit_time ? record.exit_time.substr(0, 5) : '-'}</td>
-                        <td>${statusBadge}</td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary" onclick="editAttendance(${record.student_id})">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                        </td>
-                    </tr>
-                `;
-                tbody.append(row);
-            });
-        }).fail(function(error) {
-            alert('Error loading attendance: ' + error.statusText);
-        });
-    }
-
-    function editAttendance(studentId) {
-        $.get(`/api/students/${studentId}`, function(student) {
-            $('#att-student-name').val(student.first_name + ' ' + student.last_name);
-            attendanceModal.show();
-        });
-    }
-
-    function saveAttendance() {
-        alert('Save functionality coming soon!');
-    }
+    (async function init() {
+        try {
+            await loadAttendance();
+            setInterval(async () => {
+                try {
+                    await loadAttendance();
+                } catch {
+                    // Keep background refresh silent.
+                }
+            }, 25000);
+        } catch (err) {
+            notify(`Failed loading attendance: ${err.message}`, 'error');
+        }
+    })();
 </script>
 {% endblock %}

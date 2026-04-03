@@ -29,9 +29,14 @@ CREATE TABLE IF NOT EXISTS students (
     roll_number VARCHAR(50) UNIQUE NOT NULL,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
+    face_registered TINYINT(1) NOT NULL DEFAULT 0,
+    face_data LONGTEXT,
     face_image_path VARCHAR(255),
     class_id INT,
     date_of_admission DATE,
+    face_training_status ENUM('pending', 'trained', 'needs_retrain') DEFAULT 'pending',
+    faces_captured INT DEFAULT 0,
+    last_face_capture TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (class_id) REFERENCES classes(class_id)
 );
@@ -88,6 +93,33 @@ CREATE TABLE IF NOT EXISTS sms_notifications (
     sent_at TIMESTAMP NULL,
     FOREIGN KEY (student_id) REFERENCES students(student_id),
     FOREIGN KEY (parent_id) REFERENCES parent_contacts(contact_id)
+);
+
+-- Face Captures Table (Tracks individual face images captured during enrollment)
+CREATE TABLE IF NOT EXISTS face_captures (
+    capture_id INT PRIMARY KEY AUTO_INCREMENT,
+    student_id INT NOT NULL,
+    image_path VARCHAR(255) NOT NULL,
+    captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    quality_score FLOAT DEFAULT 0,
+    is_used_for_training BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+    INDEX idx_student_captures (student_id)
+);
+
+-- Training Sessions Table (Tracks model retraining)
+CREATE TABLE IF NOT EXISTS training_sessions (
+    session_id INT PRIMARY KEY AUTO_INCREMENT,
+    status ENUM('started', 'completed', 'failed') DEFAULT 'started',
+    students_processed INT DEFAULT 0,
+    total_embeddings INT DEFAULT 0,
+    training_duration FLOAT,
+    model_accuracy FLOAT,
+    error_message TEXT,
+    triggered_by VARCHAR(50) DEFAULT 'scheduler',
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    INDEX idx_session_status (status)
 );
 
 -- Create indexes for better query performance

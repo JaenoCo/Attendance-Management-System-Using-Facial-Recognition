@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Registration - Attendance System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'sans-serif']
+                    },
+                    boxShadow: {
+                        soft: '0 10px 28px rgba(15, 23, 42, 0.09)'
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+    <style>
+        :root {
+            --page-bg-1: #f1f5f9;
+            --page-bg-2: #e2e8f0;
+            --text-main: #0f172a;
+        }
+        .dark {
+            --page-bg-1: #18181b;
+            --page-bg-2: #27272a;
+            --text-main: #f1f5f9;
+        }
+        body { color: var(--text-main); background: none; }
+        .dark .bg-white, .dark .bg-slate-50, .dark .bg-indigo-50, .dark .bg-white\/85, .dark .bg-white\/90, .dark .bg-brand-100 {
+            background-color: #181a20 !important;
+            color: #f3f4f6 !important;
+        }
+        .dark .bg-indigo-100, .dark .bg-emerald-100, .dark .bg-amber-100 {
+            background-color: #23213a !important;
+        }
+        .dark .text-slate-900, .dark .text-slate-600, .dark .text-slate-700, .dark .text-indigo-800, .dark .text-brand-700, .dark .text-slate-500, .dark .text-slate-800 {
+            color: #f3f4f6 !important;
+            text-shadow: 0 1px 2px #000a;
+        }
+        .dark .text-emerald-700 {
+            color: #6ee7b7 !important;
+        }
+        .dark .text-amber-700 {
+            color: #fde68a !important;
+        }
+        .dark .border-slate-200, .dark .border-indigo-100, .dark .border-slate-200\/80 {
+            border-color: #393e4b !important;
+        }
+        .dark input, .dark select, .dark textarea {
+            background-color: #23213a !important;
+            color: #f3f4f6 !important;
+            border-color: #393e4b !important;
+        }
+        .dark .font-semibold, .dark .font-bold {
+            color: #fff !important;
+        }
+        .dark .rounded-xl, .dark .rounded-2xl {
+            box-shadow: 0 1px 4px #0003;
+        }
+        .dark .shadow-soft {
+            box-shadow: 0 4px 24px #0006 !important;
+        }
+        .dark .bg-emerald-100 {
+            background-color: #14532d !important;
+            color: #6ee7b7 !important;
+        }
+        .dark .bg-amber-100 {
+            background-color: #78350f !important;
+            color: #fde68a !important;
+        }
+        .dark .bg-sky-50 {
+            background-color: #23213a !important;
+            color: #7dd3fc !important;
+        }
+    </style>
+<body class="min-h-screen bg-slate-100 text-slate-900">
+    <body class="min-h-screen bg-slate-100 text-slate-900" id="mainBody">
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-5 bg-white border border-slate-200 rounded-2xl shadow-soft px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Admin Registration Hub</h1>
+                <p class="text-sm text-slate-500 mt-1">Register students and launch capture flow from one workspace</p>
+            </div>
+            <a href="/" class="inline-flex items-center px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors">Back to Dashboard</a>
+        </header>
+
+        <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
+                <h2 class="font-semibold">1. Student Information</h2>
+                <p class="text-xs text-slate-500 mt-1">Create a new student profile before image capture.</p>
+
+                <form id="registrationForm" class="mt-4 space-y-3">
+                    <div>
+                        <label for="rollNumber" class="block text-sm font-medium mb-1">Student ID / Roll Number</label>
+                        <input type="text" id="rollNumber" name="rollNumber" required placeholder="e.g. STU-001" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label for="firstName" class="block text-sm font-medium mb-1">First Name</label>
+                            <input type="text" id="firstName" name="firstName" required placeholder="e.g. John" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="lastName" class="block text-sm font-medium mb-1">Last Name</label>
+                            <input type="text" id="lastName" name="lastName" required placeholder="e.g. Doe" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="classId" class="block text-sm font-medium mb-1">Class / Grade</label>
+                        <select id="classId" name="classId" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                            <option value="">Select Class</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="w-full px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">Register Student</button>
+                    <div id="registerMessage" class="hidden rounded-xl px-3 py-2 text-sm"></div>
+                </form>
+            </article>
+
+            <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
+                <h2 class="font-semibold">2. Open Image Capture</h2>
+                <p class="text-xs text-slate-500 mt-1">Select any registered student and open the dedicated capture screen.</p>
+
+                <div class="mt-4 space-y-3">
+                    <div>
+                        <label for="studentSelect" class="block text-sm font-medium mb-1">Select Student</label>
+                        <select id="studentSelect" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                            <option value="">-- Choose a registered student --</option>
+                        </select>
+                    </div>
+                    <button type="button" id="captureBtn" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors">Open Capture Page</button>
+                    <div id="captureMessage" class="hidden rounded-xl px-3 py-2 text-sm"></div>
+                </div>
+
+                <div class="mt-5">
+                    <h3 class="text-sm font-semibold">Recently Registered</h3>
+                    <div id="studentsList" class="mt-2 space-y-2"></div>
+                </div>
+            </article>
+        </section>
+    </div>
+
+    <script>
+        function showInlineMessage(el, type, text) {
+            const map = {
+                info: 'bg-sky-50 text-sky-700 border border-sky-100',
+                success: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+                error: 'bg-rose-50 text-rose-700 border border-rose-100'
+            };
+            el.className = `rounded-xl px-3 py-2 text-sm ${map[type] || map.info}`;
+            el.textContent = text;
+            el.classList.remove('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadClasses();
+            await loadStudents();
+        });
+
+        async function loadClasses() {
+            try {
+                const response = await fetch('/api/classes');
+                const classes = await response.json();
+                const classSelect = document.getElementById('classId');
+
+                classSelect.innerHTML = '<option value="">Select Class</option>';
+
+                classes.forEach(cls => {
+                    const option = document.createElement('option');
+                    option.value = cls.class_id;
+                    option.textContent = cls.class_name;
+                    classSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load classes:', error);
+            }
+        }
+
+        document.getElementById('registrationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const rollNumber = document.getElementById('rollNumber').value;
+            const firstName = document.getElementById('firstName').value;
+            const lastName = document.getElementById('lastName').value;
+            const classId = document.getElementById('classId').value;
+
+            const messageDiv = document.getElementById('registerMessage');
+            showInlineMessage(messageDiv, 'info', 'Registering student...');
+
+            try {
+                const formData = new FormData();
+                formData.append('roll_number', rollNumber);
+                formData.append('first_name', firstName);
+                formData.append('last_name', lastName);
+                if (classId) {
+                    formData.append('class_id', classId);
+                }
+
+                const response = await fetch('/api/admin/register-student', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    showInlineMessage(messageDiv, 'success', `${data.message} Redirecting to capture page...`);
+                    document.getElementById('registrationForm').reset();
+                    await loadStudents();
+                    setTimeout(() => {
+                        window.location.href = `/admin/capture-images/${data.student_id}`;
+                    }, 700);
+                } else {
+                    showInlineMessage(messageDiv, 'error', data.message || 'Registration failed');
+                }
+            } catch (error) {
+                showInlineMessage(messageDiv, 'error', error.message || 'Unknown error occurred');
+                console.error('Registration error:', error);
+            }
+        });
+
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            const studentId = document.getElementById('studentSelect').value;
+            const captureMessage = document.getElementById('captureMessage');
+
+            if (!studentId) {
+                showInlineMessage(captureMessage, 'error', 'Please select a student first.');
+                return;
+            }
+
+            window.location.href = `/admin/capture-images/${studentId}`;
+        });
+
+        async function loadStudents() {
+            try {
+                const response = await fetch('/api/students');
+                const students = await response.json();
+
+                const select = document.getElementById('studentSelect');
+                select.innerHTML = '<option value="">-- Choose a registered student --</option>';
+
+                students.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.student_id;
+                    option.textContent = `${student.first_name} ${student.last_name} (${student.roll_number})`;
+                    select.appendChild(option);
+                });
+
+                const recentStudents = students.slice(-5).reverse();
+                const listDiv = document.getElementById('studentsList');
+
+                if (recentStudents.length === 0) {
+                    listDiv.innerHTML = '<p class="text-sm text-slate-500">No students registered yet.</p>';
+                } else {
+                    listDiv.innerHTML = recentStudents.map(s => {
+                        const trained = s.face_training_status === 'trained';
+                        return `
+                            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div>
+                                    <p class="text-sm font-medium text-slate-800">${s.first_name} ${s.last_name}</p>
+                                    <p class="text-xs text-slate-500">${s.roll_number}</p>
+                                </div>
+                                <span class="inline-flex px-2 py-1 text-xs rounded-full font-medium ${trained ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                                    ${trained ? 'Trained' : 'Pending'}
+                                </span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (error) {
+                console.error('Error loading students:', error);
+            }
+        }
+
+        setInterval(loadStudents, 5000);
+    </script>
+</body>
+<script>
+// Sync dark mode from localStorage
+try {
+    const settings = JSON.parse(localStorage.getItem('attendance-ui-settings') || '{}');
+    if (settings.toggleDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+} catch {}
+</script>
+</html>

@@ -15,7 +15,8 @@ RECOGNIZER_MODEL = 'output/recognizer.pickle'
 LABEL_ENCODER = 'output/le.pickle'
 
 # Recognition Confidence Threshold
-CONFIDENCE_THRESHOLD = 0.5
+# Lowered detection threshold to improve face detection in varied lighting/angles
+CONFIDENCE_THRESHOLD = 0.35
 FACE_MIN_WIDTH = 20
 FACE_MIN_HEIGHT = 20
 
@@ -45,26 +46,10 @@ EMAIL_CONFIG = {
     'sender_password': 'your_app_password'
 }
 
-# Flask Web Dashboard Configuration
-FLASK_CONFIG = {
+# FastAPI Configuration
+FASTAPI_CONFIG = {
     'host': '127.0.0.1',
     'port': 5000,
-    'debug': True,
-    'secret_key': 'your-secret-key-here'
-}
-
-# Video Stream Configuration
-VIDEO_CONFIG = {
-    'camera_id': 0,  # 0 for default/built-in camera
-    'fps_display_interval': 30,  # Update FPS every N frames
-    'frame_width': 600,
-    'face_blob_size': 96
-}
-
-# File Paths
-FILE_PATHS = {
-    'dataset': 'dataset',
-    'output': 'output',
-    'logs': 'logs',
-    'reports': 'reports'
+    'reload': True,
+    'debug': True
 }

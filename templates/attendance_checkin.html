@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Check-in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'sans-serif']
+                    },
+                    boxShadow: {
+                        soft: '0 14px 36px rgba(15, 23, 42, 0.12)'
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+    <style>
+        :root {
+            --page-bg-1: #f1f5f9;
+            --page-bg-2: #e2e8f0;
+            --text-main: #0f172a;
+        }
+        .dark {
+            --page-bg-1: #18181b;
+            --page-bg-2: #27272a;
+            --text-main: #f1f5f9;
+        }
+        body { color: var(--text-main); background: none; }
+        .dark .bg-white, .dark .bg-slate-50, .dark .bg-indigo-50, .dark .bg-white\/85, .dark .bg-white\/90, .dark .bg-brand-100 {
+            background-color: #23272f !important; color: #f1f5f9 !important;
+        }
+        .dark .text-slate-900, .dark .text-slate-600, .dark .text-slate-700, .dark .text-indigo-800, .dark .text-brand-700, .dark .text-slate-500 {
+            color: #f1f5f9 !important;
+        }
+        .dark .border-slate-200, .dark .border-indigo-100, .dark .border-slate-200\/80 {
+            border-color: #444 !important;
+        }
+    </style>
+<body class="min-h-screen bg-slate-100 text-slate-900 grid place-items-center p-4">
+    <body class="min-h-screen bg-slate-100 text-slate-900 grid place-items-center p-4" id="mainBody">
+    <div class="w-full max-w-3xl">
+        <section class="bg-white border border-slate-200 rounded-3xl shadow-soft overflow-hidden">
+            <header class="px-6 py-7 bg-gradient-to-r from-indigo-600 to-sky-600 text-white text-center">
+                <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Attendance Check-In</h1>
+                <p class="text-indigo-100 mt-1 text-sm">Fast facial recognition attendance workflow</p>
+            </header>
+
+            <div class="p-5 sm:p-6">
+                <div class="rounded-xl border border-sky-100 bg-sky-50 text-sky-700 text-sm px-3 py-2">
+                    Enter a roll number for direct check-in or start face recognition.
+                </div>
+
+                <div id="message" class="hidden mt-3 rounded-xl px-3 py-2 text-sm"></div>
+
+                <form id="checkinForm" class="mt-4 space-y-3">
+                    <div>
+                        <label for="studentId" class="block text-sm font-semibold mb-1">Student ID / Roll Number (Optional)</label>
+                        <input type="text" id="studentId" name="studentId" autocomplete="off" placeholder="e.g. STU-001" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button type="submit" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200" id="submitBtn">Check In Now</button>
+                        <button type="button" class="px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors" id="startFaceBtn">Start Face Recognition</button>
+                    </div>
+                </form>
+
+                <div id="videoContainer" class="hidden mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
+                        <p>Scanning camera feed...</p>
+                        <p id="recognitionStatus">Detecting</p>
+                    </div>
+                    <div class="relative rounded-xl overflow-hidden bg-black">
+                        <video id="videoFeed" autoplay playsinline muted class="w-full"></video>
+                        <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                    </div>
+                    <canvas id="canvas" class="hidden"></canvas>
+                    <button type="button" class="mt-3 w-full px-4 py-2.5 rounded-xl border border-rose-300 text-rose-700 text-sm font-semibold hover:bg-rose-50 transition-colors" onclick="stopCameraAndReset()">Stop Camera</button>
+                </div>
+
+                <div id="studentInfo" class="hidden mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4"></div>
+
+                <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h2 class="text-sm font-semibold text-slate-900">Today's Attendance Log</h2>
+                            <p class="text-xs text-slate-500">Recognized students appear here after check-in.</p>
+                        </div>
+                        <button type="button" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold hover:bg-slate-50 transition-colors" id="refreshAttendanceBtn">Refresh</button>
+                    </div>
+                    <div id="recentAttendance" class="text-sm text-slate-500">Loading attendance...</div>
+                </div>
+            </div>
+
+            <footer class="px-6 py-3 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500">
+                Current Time: <span id="clock" class="font-semibold text-slate-700">--:--:--</span>
+            </footer>
+        </section>
+    </div>
+
+    <script>
+        let videoStream = null;
+        let recognitionInProgress = false;
+        let detectionIntervalId = null;
+        let recognizedStudent = null;
+
+        function showMessage(text, type = 'info') {
+            const el = document.getElementById('message');
+            const map = {
+                info: 'bg-sky-50 text-sky-700 border border-sky-100',
+                success: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+                error: 'bg-rose-50 text-rose-700 border border-rose-100',
+                warning: 'bg-amber-50 text-amber-700 border border-amber-100'
+            };
+            el.className = `mt-3 rounded-xl px-3 py-2 text-sm ${map[type] || map.info}`;
+            el.textContent = text;
+            el.classList.remove('hidden');
+        }
+
+        function drawBoundingBoxes(faces = []) {
+            const video = document.getElementById('videoFeed');
+            const overlay = document.getElementById('overlayCanvas');
+            if (!video || !overlay || !video.videoWidth || !video.videoHeight) {
+                return;
+            }
+
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+            const ctx = overlay.getContext('2d');
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            faces.forEach(face => {
+                const [startX, startY, endX, endY] = face.box || [];
+                if ([startX, startY, endX, endY].some(v => typeof v !== 'number')) {
+                    return;
+                }
+                const confidence = Number(face.confidence || 0);
+                const color = confidence >= 0.5 ? '#22c55e' : '#f59e0b';
+                const label = face.name
+                    ? `${face.name} ${(confidence * 100).toFixed(1)}%`
+                    : `Face ${(confidence * 100).toFixed(1)}%`;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+                ctx.fillStyle = color;
+                ctx.font = 'bold 13px Manrope';
+                const y = startY - 8 > 14 ? startY - 8 : startY + 18;
+                ctx.fillText(label, startX, y);
+            });
+        }
+
+        async function directCheckin(studentIdValue) {
+            const formData = new FormData();
+            formData.append('student_id', studentIdValue);
+
+            const response = await fetch('/api/attendance/checkin', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (!response.ok || data.status === 'error') {
+                throw new Error(data.message || 'Check-in failed');
+            }
+
+            if (data.status === 'warning') {
+                showMessage(data.message || 'Already present', 'warning');
+            } else {
+                showMessage(data.message || 'Attendance marked', 'success');
+            }
+
+            renderStudentInfo(data.student || null);
+            await loadAttendanceToday();
+        }
+
+        function renderStudentInfo(student) {
+            const info = document.getElementById('studentInfo');
+            if (!student) {
+                info.classList.add('hidden');
+                info.innerHTML = '';
+                return;
+            }
+
+            info.classList.remove('hidden');
+            info.innerHTML = `
+                <h2 class="text-sm font-semibold text-emerald-800 mb-2">Attendance Marked</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                    <div><span class="text-emerald-700/80">Name:</span> <span class="font-medium">${student.name || '--'}</span></div>
+                    <div><span class="text-emerald-700/80">Roll:</span> <span class="font-medium">${student.roll_number || '--'}</span></div>
+                    <div><span class="text-emerald-700/80">Time:</span> <span class="font-medium">${student.time || new Date().toLocaleTimeString()}</span></div>
+                </div>
+            `;
+        }
+
+        async function recognizeCurrentFrame() {
+            if (recognitionInProgress || !videoStream) {
+                return;
+            }
+
+            const video = document.getElementById('videoFeed');
+            if (!video || !video.videoWidth || !video.videoHeight) {
+                return;
+            }
+
+            recognitionInProgress = true;
+            try {
+                const canvas = document.getElementById('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg');
+
+                const response = await fetch('/api/attendance/recognize-face', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const data = await response.json();
+                drawBoundingBoxes(data.faces || []);
+
+                const status = document.getElementById('recognitionStatus');
+                if (data.recognized && data.student) {
+                    recognizedStudent = data.student;
+                    status.textContent = `Recognized: ${data.student.name}`;
+                    await directCheckin(data.student.roll_number || data.student.id);
+                    stopCameraAndReset();
+                } else if (data.detected || (data.faces && data.faces.length)) {
+                    status.textContent = 'Face detected';
+                } else {
+                    status.textContent = 'Scanning...';
+                }
+            } catch (error) {
+                document.getElementById('recognitionStatus').textContent = 'Recognition unavailable';
+            } finally {
+                recognitionInProgress = false;
+            }
+        }
+
+        async function startCameraAndRecognition() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                videoStream = stream;
+                const video = document.getElementById('videoFeed');
+                video.srcObject = stream;
+                await video.play();
+
+                document.getElementById('videoContainer').classList.remove('hidden');
+                showMessage('Camera started. Looking for a recognizable face...', 'info');
+
+                if (detectionIntervalId) {
+                    clearInterval(detectionIntervalId);
+                }
+                detectionIntervalId = setInterval(recognizeCurrentFrame, 1200);
+            } catch (error) {
+                showMessage(`Camera error: ${error.message}`, 'error');
+            }
+        }
+
+        function stopCameraAndReset() {
+            if (detectionIntervalId) {
+                clearInterval(detectionIntervalId);
+                detectionIntervalId = null;
+            }
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            document.getElementById('videoContainer').classList.add('hidden');
+            document.getElementById('recognitionStatus').textContent = 'Detecting';
+            drawBoundingBoxes([]);
+        }
+
+        function formatAttendanceTime(value) {
+            if (!value) return '--';
+            try {
+                return new Date(`1970-01-01T${value}`).toLocaleTimeString();
+            } catch {
+                return value;
+            }
+        }
+
+        function renderAttendanceTable(rows) {
+            const container = document.getElementById('recentAttendance');
+            const presentRows = Array.isArray(rows) ? rows.filter((row) => row.entry_time).slice(0, 10) : [];
+
+            if (!presentRows.length) {
+                container.innerHTML = '<div class="text-slate-500">No check-ins recorded yet today.</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm border-separate border-spacing-y-2">
+                        <thead class="text-slate-500">
+                            <tr>
+                                <th class="text-left px-2 py-2 font-medium">Student</th>
+                                <th class="text-left px-2 py-2 font-medium">Roll</th>
+                                <th class="text-left px-2 py-2 font-medium">Time</th>
+                                <th class="text-left px-2 py-2 font-medium">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${presentRows.map((row) => {
+                                const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || '--';
+                                const status = String(row.status || 'present');
+                                return `
+                                    <tr class="hover:bg-slate-50">
+                                        <td class="px-2 py-2 font-medium">${name}</td>
+                                        <td class="px-2 py-2">${row.roll_number || '--'}</td>
+                                        <td class="px-2 py-2">${formatAttendanceTime(row.entry_time)}</td>
+                                        <td class="px-2 py-2 capitalize">${status}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function loadAttendanceToday() {
+            try {
+                const response = await fetch('/api/attendance/today');
+                const rows = await response.json();
+                renderAttendanceTable(Array.isArray(rows) ? rows : []);
+            } catch (error) {
+                document.getElementById('recentAttendance').innerHTML = '<div class="text-rose-600">Failed to load today\'s attendance.</div>';
+            }
+        }
+
+        document.getElementById('checkinForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const studentIdValue = document.getElementById('studentId').value.trim();
+            if (!studentIdValue) {
+                showMessage('Enter Student ID/Roll Number or use face recognition.', 'warning');
+                return;
+            }
+            try {
+                await directCheckin(studentIdValue);
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+        });
+
+        document.getElementById('startFaceBtn').addEventListener('click', async () => {
+            await startCameraAndRecognition();
+        });
+
+        document.getElementById('refreshAttendanceBtn').addEventListener('click', loadAttendanceToday);
+
+        setInterval(() => {
+            document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+        }, 1000);
+
+        window.addEventListener('beforeunload', stopCameraAndReset);
+
+        loadAttendanceToday();
+    </script>
+</body>
+<script>
+// Sync dark mode from localStorage
+try {
+    const settings = JSON.parse(localStorage.getItem('attendance-ui-settings') || '{}');
+    if (settings.toggleDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+} catch {}
+</script>
+</html>

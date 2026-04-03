@@ -1,178 +1,171 @@
 {% extends "base.html" %}
 
-{% block title %}Settings - School Attendance System{% endblock %}
+{% block title %}Settings - Attendance System{% endblock %}
+{% block page_name %}settings{% endblock %}
+{% block page_header %}Settings{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Settings</h1>
-
-<div class="row">
-    <!-- General Settings -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5><i class="bi bi-gear"></i> General Settings</h5>
+<section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <article class="xl:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+        <h2 class="font-semibold">System Configuration</h2>
+        <div class="mt-4 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">School Name</span>
+                    <input id="schoolName" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="Attendance Academy">
+                </label>
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">Late Threshold (minutes)</span>
+                    <input id="lateThreshold" type="number" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="15">
+                </label>
             </div>
-            <div class="card-body">
-                <form id="generalSettingsForm">
-                    <div class="mb-3">
-                        <label for="schoolName" class="form-label">School Name</label>
-                        <input type="text" class="form-control" id="schoolName" placeholder="Enter school name" value="School Attendance System">
-                    </div>
-                    <div class="mb-3">
-                        <label for="schoolCode" class="form-label">School Code</label>
-                        <input type="text" class="form-control" id="schoolCode" placeholder="Enter school code" value="DPS-2024">
-                    </div>
-                    <div class="mb-3">
-                        <label for="academicYear" class="form-label">Academic Year</label>
-                        <input type="text" class="form-control" id="academicYear" placeholder="Enter academic year" value="2024-2025">
-                    </div>
-                    <button type="submit" class="btn btn-custom w-100">
-                        <i class="bi bi-check-circle"></i> Save Changes
-                    </button>
-                </form>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">School Start</span>
+                    <input id="schoolStart" type="time" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="08:00">
+                </label>
+                <label class="text-sm">
+                    <span class="block mb-1 text-slate-600">School End</span>
+                    <input id="schoolEnd" type="time" class="w-full rounded-xl border border-slate-300 px-3 py-2" value="15:30">
+                </label>
+            </div>
+
+            <div class="space-y-3">
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Enable Auto Face Training</span>
+                    <input id="toggleAutoTrain" type="checkbox" class="h-4 w-4" checked>
+                </label>
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Enable SMS Alerts</span>
+                    <input id="toggleSms" type="checkbox" class="h-4 w-4">
+                </label>
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Require Face for Check-in</span>
+                    <input id="toggleFaceOnly" type="checkbox" class="h-4 w-4" checked>
+                </label>
+                <label class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span class="text-sm">Dark Mode</span>
+                    <input id="toggleDarkMode" type="checkbox" class="h-4 w-4">
+                </label>
+            </div>
+
+            <div class="flex justify-end">
+                <button id="saveSettingsBtn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">Save Settings</button>
             </div>
         </div>
-    </div>
+    </article>
 
-    <!-- User Account -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h5><i class="bi bi-person"></i> Account Settings</h5>
+    <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-4 sm:p-5">
+        <h2 class="font-semibold">System Health</h2>
+        <div class="mt-4 space-y-2 text-sm">
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600">API Status</span>
+                <span id="apiStatus" class="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-700">Checking</span>
             </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label">Current User</label>
-                    <div class="form-control-plaintext">
-                        <strong>{{ username }}</strong>
-                        <span class="badge bg-primary ms-2">Admin</span>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="newPassword" class="form-label">Change Password</label>
-                    <input type="password" class="form-control" id="newPassword" placeholder="Enter new password">
-                </div>
-                <div class="mb-3">
-                    <label for="confirmPassword" class="form-label">Confirm Password</label>
-                    <input type="password" class="form-control" id="confirmPassword" placeholder="Confirm new password">
-                </div>
-                <button type="button" class="btn btn-warning w-100" onclick="changePassword()">
-                    <i class="bi bi-key"></i> Change Password
-                </button>
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600">Database</span>
+                <span id="dbStatus" class="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-700">Checking</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600">Last Sync</span>
+                <span id="lastSync" class="text-slate-500">--</span>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="row mt-4">
-    <!-- System Information -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-info text-white">
-                <h5><i class="bi bi-info-circle"></i> System Information</h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-2">
-                    <strong>Application:</strong> School Attendance System v1.0
-                </div>
-                <div class="mb-2">
-                    <strong>Framework:</strong> FastAPI + MySQL
-                </div>
-                <div class="mb-2">
-                    <strong>Database:</strong> school_attendance
-                </div>
-                <div class="mb-2">
-                    <strong>Status:</strong> <span class="badge bg-success">Operational</span>
-                </div>
-                <button type="button" class="btn btn-info w-100 mt-3" onclick="testConnection()">
-                    <i class="bi bi-arrow-repeat"></i> Test Connection
-                </button>
-            </div>
+        <div class="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3 text-xs text-indigo-700">
+            Health checks run against /api/health to validate API and database connectivity.
         </div>
-    </div>
+    </article>
+</section>
+{% endblock %}
 
-    <!-- Session & Security -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-danger text-white">
-                <h5><i class="bi bi-shield-lock"></i> Security</h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-2">
-                    <strong>Session Status:</strong> Active
-                </div>
-                <div class="mb-2">
-                    <strong>Login Time:</strong> <span id="loginTime">Just now</span>
-                </div>
-                <div class="mb-2">
-                    <strong>Session Timeout:</strong> 8 hours
-                </div>
-                <div class="mb-3">
-                    <strong>Password Hashing:</strong> PBKDF2-SHA256
-                </div>
-                <button type="button" class="btn btn-danger w-100" onclick="clearSessions()">
-                    <i class="bi bi-x-circle"></i> Clear All Sessions
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="alert alert-info mt-4" role="alert">
-    <i class="bi bi-info-circle"></i> <strong>Info:</strong> All changes are saved immediately. System settings require administrator privileges to modify.
-</div>
-
+{% block page_scripts %}
 <script>
-function changePassword() {
-    const newPassword = document.getElementById('newPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    
-    if (!newPassword || !confirmPassword) {
-        alert('Please fill in all password fields');
-        return;
-    }
-    
-    if (newPassword !== confirmPassword) {
-        alert('Passwords do not match');
-        return;
-    }
-    
-    alert('Password change functionality coming soon!');
-}
+    const settingsKey = 'attendance-ui-settings';
 
-function testConnection() {
-    const btn = event.target;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Testing...';
-    
-    fetch('/api/health')
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'healthy') {
-                alert('✅ Connection successful!\n\nDatabase: ' + data.database);
-            } else {
-                alert('❌ Connection failed');
+    function readSettings() {
+        try {
+            return JSON.parse(localStorage.getItem(settingsKey) || '{}');
+        } catch {
+            return {};
+        }
+    }
+
+    function writeSettings(payload) {
+        localStorage.setItem(settingsKey, JSON.stringify(payload));
+    }
+
+    function loadFormFromStorage() {
+        const data = readSettings();
+        Object.entries(data).forEach(([key, value]) => {
+            const el = document.getElementById(key);
+            if (!el) {
+                return;
             }
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Test Connection';
-        })
-        .catch(error => {
-            alert('❌ Error: ' + error);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Test Connection';
+            if (el.type === 'checkbox') {
+                el.checked = Boolean(value);
+            } else {
+                el.value = value;
+            }
         });
-}
-
-function clearSessions() {
-    if (confirm('This will log out all users. Are you sure?')) {
-        alert('Session clearing functionality coming soon!');
     }
-}
 
-// Update login time
-document.addEventListener('DOMContentLoaded', function() {
-    const now = new Date();
-    document.getElementById('loginTime').textContent = now.toLocaleString();
-});
+    function saveSettings() {
+        const payload = {
+            schoolName: document.getElementById('schoolName').value,
+            lateThreshold: document.getElementById('lateThreshold').value,
+            schoolStart: document.getElementById('schoolStart').value,
+            schoolEnd: document.getElementById('schoolEnd').value,
+            toggleAutoTrain: document.getElementById('toggleAutoTrain').checked,
+            toggleSms: document.getElementById('toggleSms').checked,
+            toggleFaceOnly: document.getElementById('toggleFaceOnly').checked,
+            toggleDarkMode: document.getElementById('toggleDarkMode').checked
+        };
+        writeSettings(payload);
+        setDarkMode(payload.toggleDarkMode);
+        notify('Settings saved locally', 'success');
+    }
+
+    async function checkHealth() {
+        try {
+            const health = await apiFetch('/api/health');
+            const apiStatus = document.getElementById('apiStatus');
+            const dbStatus = document.getElementById('dbStatus');
+            apiStatus.className = 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700';
+            dbStatus.className = health.database === 'connected'
+                ? 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700'
+                : 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700';
+            apiStatus.textContent = 'Online';
+            dbStatus.textContent = health.database || 'Unknown';
+            document.getElementById('lastSync').textContent = new Date().toLocaleTimeString();
+        } catch {
+            const apiStatus = document.getElementById('apiStatus');
+            const dbStatus = document.getElementById('dbStatus');
+            apiStatus.className = 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700';
+            dbStatus.className = 'inline-flex px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700';
+            apiStatus.textContent = 'Offline';
+            dbStatus.textContent = 'Unknown';
+        }
+    }
+
+    function setDarkMode(enabled) {
+        if (enabled) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }
+
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+
+    // Dark mode toggle live update
+    document.getElementById('toggleDarkMode').addEventListener('change', function(e) {
+        setDarkMode(e.target.checked);
+    });
+
+    loadFormFromStorage();
+    setDarkMode(document.getElementById('toggleDarkMode').checked);
+    checkHealth();
 </script>
 {% endblock %}

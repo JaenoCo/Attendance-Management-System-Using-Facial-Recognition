@@ -1,258 +1,147 @@
 {% extends "base.html" %}
 
-{% block title %}Face Enrollment - School Attendance System{% endblock %}
+{% block title %}Face Attendance - Attendance System{% endblock %}
+{% block page_name %}face-attendance{% endblock %}
+{% block page_header %}Face Attendance{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="bi bi-camera"></i> Face Enrollment</h1>
-    <div>
-        <span class="badge bg-info" id="enrollment-badge">Loading...</span>
-    </div>
-</div>
-
-<div class="row">
-    <!-- Camera Capture -->
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5><i class="bi bi-camera-video"></i> Capture Face</h5>
+<section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <article class="xl:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-soft p-4">
+        <div class="aspect-video rounded-xl bg-slate-900 relative overflow-hidden border-2 border-indigo-200/70">
+            <video id="enrollVideo" class="w-full h-full object-cover hidden" autoplay playsinline muted></video>
+            <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full"></canvas>
+            <div id="scanIndicator" class="absolute top-3 left-3 hidden px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-600/90 text-white border border-indigo-300/60">
+                Scanning...
             </div>
-            <div class="card-body">
-                <div class="form-group mb-3">
-                    <label for="student-select" class="form-label">Select Student <span class="text-danger">*</span></label>
-                    <select class="form-control" id="student-select" onchange="onStudentSelected()">
-                        <option value="">Choose a student...</option>
-                    </select>
-                </div>
-
-                <div id="selected-student-info" style="display: none;" class="alert alert-info mb-3">
-                    <strong>Student:</strong> <span id="selected-student-name"></span> 
-                    <br><strong>Roll No:</strong> <span id="selected-student-roll"></span>
-                    <br><strong>Status:</strong> <span id="selected-student-status" class="badge bg-warning">Not Registered</span>
-                </div>
-
-                <div id="camera-container" style="display: none;">
-                    <div class="position-relative" style="background: #000; border-radius: 8px; overflow: hidden;">
-                        <video id="camera-feed" style="width: 100%; max-height: 400px; display: block;"></video>
-                        <div id="face-detection-indicator" style="position: absolute; top: 10px; right: 10px; padding: 10px 15px; background: rgba(255,0,0,0.7); color: white; border-radius: 5px; display: none;">
-                            <i class="bi bi-check-circle"></i> Face Detected
-                        </div>
-                    </div>
-
-                    <div class="mt-3 d-flex gap-2">
-                        <button class="btn btn-success flex-grow-1" id="capture-btn" onclick="captureFrame()" disabled>
-                            <i class="bi bi-camera"></i> Capture Face
-                        </button>
-                        <button class="btn btn-secondary flex-grow-1" id="retake-btn" onclick="stopCamera()" style="display: none;">
-                            <i class="bi bi-arrow-counterclockwise"></i> Retake
-                        </button>
-                    </div>
-
-                    <div id="capture-status" class="alert alert-info mt-3" style="display: none;">
-                        <div class="spinner-border spinner-border-sm me-2" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <span>Processing face...</span>
-                    </div>
-
-                    <div id="capture-result" class="alert mt-3" style="display: none;">
-                        <div id="result-text"></div>
-                        <div id="result-details" style="margin-top: 10px;"></div>
-                    </div>
-                </div>
-
-                <div id="no-student-message" class="alert alert-warning">
-                    Please select a student to begin face enrollment.
-                </div>
+            <div id="faceIndicator" class="absolute top-3 right-3 hidden px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-600/90 text-white border border-emerald-300/60">
+                Face Detected
             </div>
-        </div>
-    </div>
-
-    <!-- Face Upload Alternative -->
-    <div class="col-lg-4">
-        <div class="card mb-4">
-            <div class="card-header bg-success text-white">
-                <h5><i class="bi bi-upload"></i> Upload Image</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted">Alternative: Upload a face image file</p>
-                
-                <div class="mb-3">
-                    <label for="face-image-upload" class="form-label">Choose Image</label>
-                    <input type="file" class="form-control" id="face-image-upload" accept="image/*" disabled>
-                </div>
-
-                <button class="btn btn-success w-100" id="upload-face-btn" onclick="uploadFaceImage()" disabled>
-                    <i class="bi bi-cloud-upload"></i> Upload & Register
-                </button>
-
-                <div id="upload-result" class="alert mt-3" style="display: none;"></div>
+            <div id="cameraPlaceholder" class="absolute inset-0 grid place-items-center text-slate-300 text-sm">
+                Start camera to begin face attendance preview.
             </div>
         </div>
 
-        <!-- Enrollment Statistics -->
-        <div class="card">
-            <div class="card-header bg-info text-white">
-                <h5><i class="bi bi-bar-chart"></i> Statistics</h5>
+        <div class="mt-4">
+            <div class="flex justify-between items-center text-xs text-slate-500 mb-1.5">
+                <span>Attendance Setup Progress</span>
+                <span id="progressLabel">0%</span>
             </div>
-            <div class="card-body">
-                <div class="mb-2">
-                    <strong>Total Students:</strong> <span id="stat-total" class="badge bg-primary">0</span>
-                </div>
-                <div class="mb-2">
-                    <strong>Enrolled:</strong> <span id="stat-enrolled" class="badge bg-success">0</span>
-                </div>
-                <div class="mb-2">
-                    <strong>Pending:</strong> <span id="stat-pending" class="badge bg-warning">0</span>
-                </div>
-                <div class="mb-3" style="margin-top: 15px;">
-                    <div class="progress" style="height: 25px;">
-                        <div id="enrollment-progress" class="progress-bar bg-success" role="progressbar" style="width: 0%">
-                            <span id="progress-text">0%</span>
-                        </div>
-                    </div>
-                </div>
-
-                <button class="btn btn-info w-100" onclick="refreshStats()">
-                    <i class="bi bi-arrow-clockwise"></i> Refresh Stats
-                </button>
+            <div class="h-2.5 rounded-full bg-slate-200 overflow-hidden">
+                <div id="progressBar" class="h-full w-0 bg-gradient-to-r from-indigo-500 to-sky-500 transition-all duration-500"></div>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Training Model Section -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card border-warning">
-            <div class="card-header bg-warning text-dark">
-                <h5><i class="bi bi-gear"></i> Model Training</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted">Train the facial recognition model after enrolling faces</p>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-warning" id="train-btn" onclick="trainModel()">
-                        <i class="bi bi-cpu"></i> Train Model
-                    </button>
-                    <div id="train-result" class="alert alert-info w-100" style="margin: 0; display: none;"></div>
-                </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+            <button id="startCameraBtn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">Start Camera</button>
+            <button id="stopCameraBtn" class="px-4 py-2 rounded-xl border border-slate-300 text-sm font-medium hover:bg-slate-50 transition-colors" disabled>Stop Camera</button>
+            <button id="captureFaceBtn" class="px-4 py-2 rounded-xl border border-slate-300 text-sm font-medium hover:bg-slate-50 transition-colors" disabled>Capture Face</button>
+        </div>
+    </article>
+
+    <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-4">
+        <h2 class="font-semibold">Face Attendance Controls</h2>
+        <div class="mt-4 space-y-3">
+            <div>
+                <p class="text-sm mb-1 font-medium">Auto Recognition</p>
+                <p class="text-sm text-slate-600">No student selection required — capture a face and the system will try to recognize and mark attendance automatically.</p>
             </div>
         </div>
-    </div>
-</div>
 
+        <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm">
+            <p class="font-medium">Detection Status</p>
+            <p id="detectionStatus" class="mt-1 text-slate-600">Idle</p>
+        </div>
+
+        <div class="mt-3 rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm">
+            <p class="font-medium">Face Attendance Status</p>
+            <p id="enrollStatus" class="mt-1 text-slate-600">Waiting for capture</p>
+        </div>
+
+        <div class="mt-3 rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-xs text-indigo-700">
+            Capture quality improves when face is centered and well-lit.
+        </div>
+        
+        <div class="mt-4">
+            <h3 class="text-sm font-semibold">Recent Check-ins</h3>
+            <div id="recentAttendance" class="mt-2 text-sm">
+                <div class="text-slate-500">Loading...</div>
+            </div>
+        </div>
+    </article>
+</section>
 {% endblock %}
 
-{% block extra_js %}
+{% block page_scripts %}
 <script>
-    let selectedStudentId = null;
-    let cameraStream = null;
-    let cameraActive = false;
-    const video = document.getElementById('camera-feed');
-    const canvas = document.createElement('canvas');
-    const canvasContext = canvas.getContext('2d');
+    const state = {
+        stream: null,
+        detectTimer: null,
+        detections: [],
+        running: false,
+        processing: false,
+        lastRecognitionTime: 0,
+        recognitionCooldownMs: 30000
+    };
 
-    $(document).ready(function() {
-        loadStudents();
-        loadEnrollmentStats();
-        // Refresh stats every 30 seconds
-        setInterval(loadEnrollmentStats, 30000);
-    });
+    const video = document.getElementById('enrollVideo');
+    const canvas = document.getElementById('overlayCanvas');
+    const ctx = canvas.getContext('2d');
+    const progressBar = document.getElementById('progressBar');
+    const progressLabel = document.getElementById('progressLabel');
 
-    function loadStudents() {
-        $.ajax({
-            url: '/api/students',
-            method: 'GET',
-            success: function(data) {
-                const select = $('#student-select');
-                select.empty();
-                select.append('<option value="">Choose a student...</option>');
-                
-                data.forEach(function(student) {
-                    select.append(`
-                        <option value="${student.student_id}" data-name="${student.name}" data-roll="${student.roll_number}">
-                            ${student.roll_number} - ${student.name}
-                        </option>
-                    `);
-                });
-            },
-            error: function() {
-                alert('Error loading students');
+    function setProgress(value) {
+        const bounded = Math.max(0, Math.min(100, Number(value || 0)));
+        progressBar.style.width = `${bounded}%`;
+        progressLabel.textContent = `${Math.round(bounded)}%`;
+    }
+
+    function resizeCanvasToVideo() {
+        const rect = video.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+    }
+
+    function drawOverlay() {
+        resizeCanvasToVideo();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = 'rgba(79, 70, 229, 0.7)';
+        ctx.lineWidth = 2;
+        const marginX = canvas.width * 0.25;
+        const marginY = canvas.height * 0.16;
+        ctx.strokeRect(marginX, marginY, canvas.width - marginX * 2, canvas.height - marginY * 2);
+
+        state.detections.forEach((face) => {
+            const [x1, y1, x2, y2] = face.box || [];
+            if ([x1, y1, x2, y2].some((v) => typeof v !== 'number')) {
+                return;
             }
+            const scaleX = canvas.width / video.videoWidth;
+            const scaleY = canvas.height / video.videoHeight;
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.95)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
         });
     }
 
-    function onStudentSelected() {
-        const select = $('#student-select');
-        selectedStudentId = parseInt(select.val());
-        
-        if (!selectedStudentId) {
-            $('#camera-container').hide();
-            $('#no-student-message').show();
-            $('#selected-student-info').hide();
-            $('#face-image-upload').prop('disabled', true);
-            $('#upload-face-btn').prop('disabled', true);
-            stopCamera();
-            return;
-        }
-        
-        $('#no-student-message').hide();
-        $('#camera-container').show();
-        $('#selected-student-info').show();
-        $('#face-image-upload').prop('disabled', false);
-        $('#upload-face-btn').prop('disabled', false);
-        
-        // Update student info display
-        const selectedOption = select.find('option:selected');
-        $('#selected-student-name').text(selectedOption.data('name'));
-        $('#selected-student-roll').text(selectedOption.data('roll'));
-        
-        // Check enrollment status
-        checkEnrollmentStatus(selectedStudentId);
-        
-        // Start camera
-        startCamera();
+    function frameToDataUrl() {
+        const temp = document.createElement('canvas');
+        temp.width = video.videoWidth;
+        temp.height = video.videoHeight;
+        const tempCtx = temp.getContext('2d');
+        tempCtx.drawImage(video, 0, 0, temp.width, temp.height);
+        return temp.toDataURL('image/jpeg', 0.92);
     }
 
-    function startCamera() {
-        if (cameraActive) return;
-        
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-            .then(function(stream) {
-                cameraStream = stream;
-                video.srcObject = stream;
-                cameraActive = true;
-                $('#capture-btn').prop('disabled', false);
-                $('#retake-btn').show();
-            })
-            .catch(function(err) {
-                alert('Error accessing camera: ' + err.message);
-                console.error('Camera error:', err);
-            });
-    }
+    // removed student selection — recognition is automatic against enrolled students
 
-    function stopCamera() {
-        if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-        }
-        cameraActive = false;
-        $('#capture-btn').prop('disabled', true);
-        $('#retake-btn').hide();
-        $('#face-detection-indicator').hide();
-    }
-
-    function captureFrame() {
-        if (!cameraActive) {
-            alert('Camera not active');
-            return;
-        }
-        
-        if (!selectedStudentId) {
-            alert('Please select a student');
+    async function detectFaces() {
+        if (!state.running || !video.videoWidth) {
             return;
         }
 
         try {
+<<<<<<< HEAD
             // Set canvas size to match video
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -472,5 +361,255 @@
         loadEnrollmentStats();
         loadStudents();
     }
+=======
+            document.getElementById('scanIndicator').classList.remove('hidden');
+            document.getElementById('detectionStatus').textContent = 'Scanning...';
+            const response = await apiFetch('/api/face/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: frameToDataUrl() })
+            });
+            state.detections = response.faces || [];
+            const detectedCount = state.detections.length;
+            document.getElementById('detectionStatus').textContent = detectedCount
+                ? `${detectedCount} face(s) detected`
+                : 'No face detected';
+            document.getElementById('faceIndicator').classList.toggle('hidden', detectedCount === 0);
+            setProgress(detectedCount ? 55 : 18);
+            drawOverlay();
+
+            // Auto-recognize and check-in when a face is detected
+            const now = Date.now();
+            if (detectedCount > 0 && !state.processing && now - state.lastRecognitionTime > state.recognitionCooldownMs) {
+                state.processing = true;
+                try {
+                    document.getElementById('enrollStatus').textContent = 'Recognizing...';
+                    const image = frameToDataUrl();
+                    const resp = await fetch('/api/attendance/recognize-face', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image })
+                    });
+                    const data = await resp.json();
+
+                    state.detections = data.faces || [];
+                    drawOverlay();
+
+                    if (data.recognized && data.student) {
+                        const student = data.student;
+                        document.getElementById('enrollStatus').textContent = `Recognized: ${student.name}`;
+                        setProgress(85);
+
+                        // perform check-in using roll number if available, else id
+                        const checkinForm = new FormData();
+                        checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                        const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
+                        const checkData = await checkResp.json();
+
+                        if (checkResp.ok && checkData.status === 'success') {
+                            document.getElementById('enrollStatus').textContent = checkData.message || 'Attendance marked';
+                            setProgress(100);
+                            notify(checkData.message || 'Attendance marked', 'success');
+                            await loadAttendanceToday();
+                        } else if (checkData.status === 'warning') {
+                            document.getElementById('enrollStatus').textContent = checkData.message || 'Already present';
+                            setProgress(100);
+                            notify(checkData.message || 'Already present', 'warning');
+                            await loadAttendanceToday();
+                        } else {
+                            document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
+                            setProgress(45);
+                            notify(checkData.message || 'Check-in failed', 'error');
+                        }
+
+                        state.lastRecognitionTime = Date.now();
+                    } else {
+                        document.getElementById('enrollStatus').textContent = data.message || 'Face not recognized';
+                        setProgress(30);
+                        notify(data.message || 'Face not recognized', 'error');
+                    }
+                } catch (err) {
+                    notify(`Recognition failed: ${err.message}`, 'error');
+                    document.getElementById('enrollStatus').textContent = 'Recognition unavailable';
+                } finally {
+                    state.processing = false;
+                }
+            }
+        } catch (err) {
+            state.detections = [];
+            document.getElementById('faceIndicator').classList.add('hidden');
+            document.getElementById('detectionStatus').textContent = 'Detection unavailable';
+            setProgress(10);
+            drawOverlay();
+        }
+    }
+
+    async function startCamera() {
+        if (state.running) {
+            return;
+        }
+        try {
+            state.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            video.srcObject = state.stream;
+            await video.play();
+            state.running = true;
+
+            document.getElementById('cameraPlaceholder').classList.add('hidden');
+            video.classList.remove('hidden');
+            document.getElementById('startCameraBtn').disabled = true;
+            document.getElementById('stopCameraBtn').disabled = false;
+            document.getElementById('captureFaceBtn').disabled = false;
+
+            state.detectTimer = setInterval(detectFaces, 1300);
+            setProgress(25);
+            notify('Camera started', 'success');
+        } catch (err) {
+            notify(`Camera error: ${err.message}`, 'error');
+        }
+    }
+
+    function stopCamera() {
+        if (state.detectTimer) {
+            clearInterval(state.detectTimer);
+            state.detectTimer = null;
+        }
+        if (state.stream) {
+            state.stream.getTracks().forEach((track) => track.stop());
+            state.stream = null;
+        }
+        state.running = false;
+        state.detections = [];
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        document.getElementById('cameraPlaceholder').classList.remove('hidden');
+        video.classList.add('hidden');
+        document.getElementById('startCameraBtn').disabled = false;
+        document.getElementById('stopCameraBtn').disabled = true;
+        document.getElementById('captureFaceBtn').disabled = true;
+        document.getElementById('detectionStatus').textContent = 'Idle';
+        document.getElementById('scanIndicator').classList.add('hidden');
+        document.getElementById('faceIndicator').classList.add('hidden');
+        setProgress(0);
+    }
+
+    async function captureFace() {
+        if (!state.running) {
+            notify('Start camera first', 'error');
+            return;
+        }
+
+        try {
+            document.getElementById('enrollStatus').textContent = 'Recognizing...';
+            setProgress(60);
+
+            const image = frameToDataUrl();
+            const resp = await fetch('/api/attendance/recognize-face', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image })
+            });
+            const data = await resp.json();
+
+            // draw any returned bounding boxes
+            state.detections = data.faces || [];
+            drawOverlay();
+
+            if (data.recognized && data.student) {
+                const student = data.student;
+                document.getElementById('enrollStatus').textContent = `Recognized: ${student.name}`;
+                setProgress(85);
+
+                // perform check-in using roll number if available, else id
+                const checkinForm = new FormData();
+                checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
+                const checkData = await checkResp.json();
+
+                if (checkResp.ok && checkData.status === 'success') {
+                    document.getElementById('enrollStatus').textContent = checkData.message || 'Attendance marked';
+                    setProgress(100);
+                    notify(checkData.message || 'Attendance marked', 'success');
+                    // refresh recent attendance list
+                    await loadAttendanceToday();
+                } else if (checkData.status === 'warning') {
+                    document.getElementById('enrollStatus').textContent = checkData.message || 'Already present';
+                    setProgress(100);
+                    notify(checkData.message || 'Already present', 'warning');
+                    await loadAttendanceToday();
+                } else {
+                    document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
+                    setProgress(45);
+                    notify(checkData.message || 'Check-in failed', 'error');
+                }
+
+                // Optionally stop camera after a successful recognition
+                // stopCamera();
+            } else {
+                document.getElementById('enrollStatus').textContent = data.message || 'Face not recognized';
+                setProgress(30);
+                notify(data.message || 'Face not recognized', 'error');
+            }
+        } catch (err) {
+            setProgress(20);
+            notify(`Recognition failed: ${err.message}`, 'error');
+            document.getElementById('enrollStatus').textContent = 'Recognition unavailable';
+        }
+    }
+
+    function formatTime(value) {
+        if (!value) return '--';
+        try {
+            return new Date(value).toLocaleTimeString();
+        } catch {
+            return value;
+        }
+    }
+
+    function renderAttendanceTable() {
+        const container = document.getElementById('recentAttendance');
+        // only show records that have an entry_time (i.e. actual check-ins)
+        const presentRows = (state.attendance || []).filter(r => r.entry_time).slice(0, 10);
+        if (!presentRows.length) {
+            container.innerHTML = '<div class="text-slate-500">No check-ins yet today.</div>';
+            return;
+        }
+
+        const table = [`<div class="overflow-x-auto"><table class="min-w-full text-sm border-separate border-spacing-y-2"><thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-2 py-2 font-medium">Student</th><th class="text-left px-2 py-2 font-medium">Roll</th><th class="text-left px-2 py-2 font-medium">Date</th><th class="text-left px-2 py-2 font-medium">Time</th></tr></thead><tbody>`];
+        presentRows.forEach(r => {
+            const name = `${r.first_name || ''} ${r.last_name || ''}`.trim() || '--';
+            const date = r.attendance_date || '';
+            table.push(`<tr class="hover:bg-slate-50"><td class="px-2 py-2">${name}</td><td class="px-2 py-2">${r.roll_number || '--'}</td><td class="px-2 py-2">${date}</td><td class="px-2 py-2">${formatTime(r.entry_time)}</td></tr>`);
+        });
+        table.push('</tbody></table></div>');
+        container.innerHTML = table.join('');
+    }
+
+    async function loadAttendanceToday() {
+        try {
+            state.attendance = await apiFetch('/api/attendance/today') || [];
+            renderAttendanceTable();
+        } catch (err) {
+            document.getElementById('recentAttendance').innerHTML = `<div class="text-rose-600">Failed loading attendance</div>`;
+        }
+    }
+
+    document.getElementById('startCameraBtn').addEventListener('click', startCamera);
+    document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
+    // manual capture disabled - auto-checkin on detection
+    const captureBtn = document.getElementById('captureFaceBtn');
+    if (captureBtn) {
+        captureBtn.style.display = 'none';
+    }
+
+    window.addEventListener('beforeunload', stopCamera);
+    window.addEventListener('resize', drawOverlay);
+
+    (function init() {
+        // No student selection required for auto recognition
+    })();
+    // load recent attendance and poll
+    loadAttendanceToday();
+    setInterval(loadAttendanceToday, 15000);
+>>>>>>> 50e86439e0dfea5797a3f3a5a9e843f042e30f5e
 </script>
 {% endblock %}
