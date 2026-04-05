@@ -80,7 +80,8 @@
         running: false,
         processing: false,
         lastRecognitionTime: 0,
-        recognitionCooldownMs: 30000
+        lastAttendanceRefreshTime: 0,
+        recognitionCooldownMs: 0
     };
 
     const video = document.getElementById('enrollVideo');
@@ -157,6 +158,10 @@
             setProgress(detectedCount ? 55 : 18);
             drawOverlay();
 
+            if (detectedCount > 0) {
+                await refreshAttendanceIfNeeded();
+            }
+
             // Auto-recognize and check-in when a face is detected
             const now = Date.now();
             if (detectedCount > 0 && !state.processing && now - state.lastRecognitionTime > state.recognitionCooldownMs) {
@@ -186,15 +191,19 @@
                         const checkData = await checkResp.json();
 
                         if (checkResp.ok && checkData.status === 'success') {
-                            document.getElementById('enrollStatus').textContent = checkData.message || 'Attendance marked';
+                            const latestMessage = formatLatestCheckinMessage(student, checkData.record);
+                            document.getElementById('enrollStatus').textContent = latestMessage;
                             setProgress(100);
-                            notify(checkData.message || 'Attendance marked', 'success');
-                            await loadAttendanceToday();
+                            notify(latestMessage, 'success');
+                            addLatestAttendanceRecord(checkData.record);
+                            await refreshAttendanceIfNeeded(true);
                         } else if (checkData.status === 'warning') {
-                            document.getElementById('enrollStatus').textContent = checkData.message || 'Already present';
+                            const latestMessage = formatLatestCheckinMessage(student, checkData.record);
+                            document.getElementById('enrollStatus').textContent = latestMessage;
                             setProgress(100);
-                            notify(checkData.message || 'Already present', 'warning');
-                            await loadAttendanceToday();
+                            notify(latestMessage, 'success');
+                            addLatestAttendanceRecord(checkData.record);
+                            await refreshAttendanceIfNeeded(true);
                         } else {
                             document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
                             setProgress(45);
@@ -305,15 +314,19 @@
                 const checkData = await checkResp.json();
 
                 if (checkResp.ok && checkData.status === 'success') {
-                    document.getElementById('enrollStatus').textContent = checkData.message || 'Attendance marked';
+                    const latestMessage = formatLatestCheckinMessage(student, checkData.record);
+                    document.getElementById('enrollStatus').textContent = latestMessage;
                     setProgress(100);
-                    notify(checkData.message || 'Attendance marked', 'success');
+                    notify(latestMessage, 'success');
+                    addLatestAttendanceRecord(checkData.record);
                     // refresh recent attendance list
                     await loadAttendanceToday();
                 } else if (checkData.status === 'warning') {
-                    document.getElementById('enrollStatus').textContent = checkData.message || 'Already present';
+                    const latestMessage = formatLatestCheckinMessage(student, checkData.record);
+                    document.getElementById('enrollStatus').textContent = latestMessage;
                     setProgress(100);
-                    notify(checkData.message || 'Already present', 'warning');
+                    notify(latestMessage, 'success');
+                    addLatestAttendanceRecord(checkData.record);
                     await loadAttendanceToday();
                 } else {
                     document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
@@ -338,16 +351,108 @@
     function formatTime(value) {
         if (!value) return '--';
         try {
-            return new Date(value).toLocaleTimeString();
+            return new Date(`1970-01-01T${value}`).toLocaleTimeString();
         } catch {
             return value;
         }
     }
 
+    function formatLatestCheckinMessage(student, record) {
+        const name = student?.name || `${record?.first_name || ''} ${record?.last_name || ''}`.trim() || 'Student';
+        const timeText = formatTime(record?.entry_time || student?.time || record?.created_at);
+        return `Latest check-in: ${name} at ${timeText}`;
+    }
+
+    function getAttendanceRowTimestamp(row = {}) {
+        const createdAt = row.created_at || row.updated_at || '';
+        if (createdAt) {
+            const createdStamp = new Date(createdAt).getTime();
+            if (!Number.isNaN(createdStamp)) {
+                return createdStamp;
+            }
+        }
+
+        const dateValue = row.attendance_date || row.date || '';
+        const timeValue = row.entry_time || row.time || '';
+        if (dateValue && timeValue) {
+            const combinedStamp = new Date(`${dateValue}T${timeValue}`).getTime();
+            if (!Number.isNaN(combinedStamp)) {
+                return combinedStamp;
+            }
+        }
+
+        if (timeValue) {
+            const timeStamp = new Date(`1970-01-01T${timeValue}`).getTime();
+            if (!Number.isNaN(timeStamp)) {
+                return timeStamp;
+            }
+        }
+
+        if (dateValue) {
+            const dateStamp = new Date(dateValue).getTime();
+            if (!Number.isNaN(dateStamp)) {
+                return dateStamp;
+            }
+        }
+
+        return 0;
+    }
+
+    function getAttendanceRowKey(row = {}) {
+        if (row.log_id !== undefined && row.log_id !== null && String(row.log_id).trim() !== '') {
+            return `log:${row.log_id}`;
+        }
+
+        const studentId = row.student_id || row.roll_number || '';
+        const dateValue = row.attendance_date || row.date || '';
+        const timeValue = row.entry_time || row.created_at || row.time || '';
+        const status = row.status || '';
+        return `fallback:${studentId}|${dateValue}|${timeValue}|${status}`;
+    }
+
+    function sortRecentRows(rows = []) {
+        return [...rows].sort((left, right) => {
+            const leftStamp = getAttendanceRowTimestamp(left);
+            const rightStamp = getAttendanceRowTimestamp(right);
+            if (rightStamp !== leftStamp) {
+                return rightStamp - leftStamp;
+            }
+
+            const leftLogId = Number(left.log_id || 0);
+            const rightLogId = Number(right.log_id || 0);
+            return rightLogId - leftLogId;
+        });
+    }
+
+    function addLatestAttendanceRecord(record) {
+        if (!record) {
+            return;
+        }
+
+        state.attendance = [
+            record,
+            ...(state.attendance || []).filter((item) => getAttendanceRowKey(item) !== getAttendanceRowKey(record))
+        ];
+        renderAttendanceTable();
+    }
+
+    function mergeAttendanceRows(rows = []) {
+        const byId = new Map();
+        for (const row of [...(state.attendance || []), ...rows]) {
+            byId.set(getAttendanceRowKey(row), row);
+        }
+
+        state.attendance = sortRecentRows([...byId.values()]);
+    }
+
+    async function refreshAttendanceIfNeeded(force = false) {
+        await loadAttendanceToday();
+        state.lastAttendanceRefreshTime = Date.now();
+    }
+
     function renderAttendanceTable() {
         const container = document.getElementById('recentAttendance');
-        // only show records that have an entry_time (i.e. actual check-ins)
-        const presentRows = (state.attendance || []).filter(r => r.entry_time).slice(0, 10);
+        const presentRows = sortRecentRows(state.attendance || []).filter(r => r.entry_time).slice(0, 10);
         if (!presentRows.length) {
             container.innerHTML = '<div class="text-slate-500">No check-ins yet today.</div>';
             return;
@@ -365,7 +470,12 @@
 
     async function loadAttendanceToday() {
         try {
-            state.attendance = await apiFetch('/api/attendance/today') || [];
+            try {
+                mergeAttendanceRows(await apiFetch('/api/attendance/recent-checkins?limit=10') || []);
+            } catch {
+                mergeAttendanceRows(await apiFetch('/api/attendance/today') || []);
+            }
+            state.lastAttendanceRefreshTime = Date.now();
             renderAttendanceTable();
         } catch (err) {
             document.getElementById('recentAttendance').innerHTML = `<div class="text-rose-600">Failed loading attendance</div>`;

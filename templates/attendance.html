@@ -58,7 +58,7 @@
             return '--';
         }
         try {
-            return new Date(value).toLocaleTimeString();
+            return new Date(`1970-01-01T${value}`).toLocaleTimeString();
         } catch {
             return value;
         }

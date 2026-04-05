@@ -111,6 +111,7 @@
         let recognitionInProgress = false;
         let detectionIntervalId = null;
         let recognizedStudent = null;
+        let attendanceRows = [];
 
         function showMessage(text, type = 'info') {
             const el = document.getElementById('message');
@@ -172,13 +173,11 @@
                 throw new Error(data.message || 'Check-in failed');
             }
 
-            if (data.status === 'warning') {
-                showMessage(data.message || 'Already present', 'warning');
-            } else {
-                showMessage(data.message || 'Attendance marked', 'success');
-            }
+            const latestMessage = formatLatestCheckinMessage(data.student || null, data.record || null);
+            showMessage(latestMessage, 'success');
 
             renderStudentInfo(data.student || null);
+            setLatestAttendanceRecord(data.record);
             await loadAttendanceToday();
         }
 
@@ -234,7 +233,6 @@
                     recognizedStudent = data.student;
                     status.textContent = `Recognized: ${data.student.name}`;
                     await directCheckin(data.student.roll_number || data.student.id);
-                    stopCameraAndReset();
                 } else if (data.detected || (data.faces && data.faces.length)) {
                     status.textContent = 'Face detected';
                 } else {
@@ -290,9 +288,97 @@
             }
         }
 
+        function formatLatestCheckinMessage(student, record) {
+            const name = student?.name || `${record?.first_name || ''} ${record?.last_name || ''}`.trim() || 'Student';
+            const timeText = formatAttendanceTime(record?.entry_time || student?.time || record?.created_at);
+            return `Latest check-in: ${name} at ${timeText}`;
+        }
+
+        function getAttendanceRowTimestamp(row = {}) {
+            const createdAt = row.created_at || row.updated_at || '';
+            if (createdAt) {
+                const createdStamp = new Date(createdAt).getTime();
+                if (!Number.isNaN(createdStamp)) {
+                    return createdStamp;
+                }
+            }
+
+            const dateValue = row.attendance_date || row.date || '';
+            const timeValue = row.entry_time || row.time || '';
+            if (dateValue && timeValue) {
+                const combinedStamp = new Date(`${dateValue}T${timeValue}`).getTime();
+                if (!Number.isNaN(combinedStamp)) {
+                    return combinedStamp;
+                }
+            }
+
+            if (timeValue) {
+                const timeStamp = new Date(`1970-01-01T${timeValue}`).getTime();
+                if (!Number.isNaN(timeStamp)) {
+                    return timeStamp;
+                }
+            }
+
+            if (dateValue) {
+                const dateStamp = new Date(dateValue).getTime();
+                if (!Number.isNaN(dateStamp)) {
+                    return dateStamp;
+                }
+            }
+
+            return 0;
+        }
+
+        function getAttendanceRowKey(row = {}) {
+            if (row.log_id !== undefined && row.log_id !== null && String(row.log_id).trim() !== '') {
+                return `log:${row.log_id}`;
+            }
+
+            const studentId = row.student_id || row.roll_number || '';
+            const dateValue = row.attendance_date || row.date || '';
+            const timeValue = row.entry_time || row.created_at || row.time || '';
+            const status = row.status || '';
+            return `fallback:${studentId}|${dateValue}|${timeValue}|${status}`;
+        }
+
+        function sortRecentRows(rows = []) {
+            return [...rows].sort((left, right) => {
+                const leftStamp = getAttendanceRowTimestamp(left);
+                const rightStamp = getAttendanceRowTimestamp(right);
+                if (rightStamp !== leftStamp) {
+                    return rightStamp - leftStamp;
+                }
+
+                const leftLogId = Number(left.log_id || 0);
+                const rightLogId = Number(right.log_id || 0);
+                return rightLogId - leftLogId;
+            });
+        }
+
+        function setLatestAttendanceRecord(record) {
+            if (!record) {
+                return;
+            }
+
+            attendanceRows = [
+                record,
+                ...attendanceRows.filter((item) => getAttendanceRowKey(item) !== getAttendanceRowKey(record))
+            ];
+            renderAttendanceTable(attendanceRows);
+        }
+
+        function mergeAttendanceRows(rows = []) {
+            const byId = new Map();
+            for (const row of [...attendanceRows, ...rows]) {
+                byId.set(getAttendanceRowKey(row), row);
+            }
+
+            attendanceRows = sortRecentRows([...byId.values()]);
+        }
+
         function renderAttendanceTable(rows) {
             const container = document.getElementById('recentAttendance');
-            const presentRows = Array.isArray(rows) ? rows.filter((row) => row.entry_time).slice(0, 10) : [];
+            const presentRows = Array.isArray(rows) ? sortRecentRows(rows).filter((row) => row.entry_time).slice(0, 10) : [];
 
             if (!presentRows.length) {
                 container.innerHTML = '<div class="text-slate-500">No check-ins recorded yet today.</div>';
@@ -331,9 +417,22 @@
 
         async function loadAttendanceToday() {
             try {
-                const response = await fetch('/api/attendance/today');
-                const rows = await response.json();
-                renderAttendanceTable(Array.isArray(rows) ? rows : []);
+                let rows = [];
+                try {
+                    const response = await fetch('/api/attendance/recent-checkins?limit=10');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    rows = await response.json() || [];
+                } catch {
+                    const fallbackResponse = await fetch('/api/attendance/today');
+                    if (!fallbackResponse.ok) {
+                        throw new Error(`HTTP ${fallbackResponse.status}`);
+                    }
+                    rows = await fallbackResponse.json() || [];
+                }
+                mergeAttendanceRows(Array.isArray(rows) ? rows : []);
+                renderAttendanceTable(attendanceRows);
             } catch (error) {
                 document.getElementById('recentAttendance').innerHTML = '<div class="text-rose-600">Failed to load today\'s attendance.</div>';
             }

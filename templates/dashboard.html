@@ -197,6 +197,17 @@
         });
     }
 
+    function formatTime(value) {
+        if (!value) {
+            return '--';
+        }
+        try {
+            return new Date(`1970-01-01T${value}`).toLocaleTimeString();
+        } catch {
+            return value;
+        }
+    }
+
     async function loadDashboard() {
         try {
             const now = new Date();
@@ -219,7 +230,7 @@
             document.getElementById('faceEnrollMeter').style.width = `${Math.max(6, Math.min(percent, 100))}%`;
 
             const rows = (attendance || []).slice(0, 8).map((item) => {
-                const entry = item.entry_time ? new Date(item.entry_time).toLocaleTimeString() : '--';
+                const entry = formatTime(item.entry_time);
                 const label = item.status || 'pending';
                 return `
                     <tr class="hover:-translate-y-0.5 transition-transform duration-200">

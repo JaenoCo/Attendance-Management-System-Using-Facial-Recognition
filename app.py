@@ -31,6 +31,26 @@ import socket
 import re
 from pathlib import Path
 
+
+def format_db_value(value):
+    """Convert database date/time values into JSON-safe strings."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, td):
+        total_seconds = int(value.total_seconds())
+        sign = '-' if total_seconds < 0 else ''
+        total_seconds = abs(total_seconds)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{sign}{hours:02d}:{minutes:02d}:{seconds:02d}"
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return str(value)
+
 # Initialize FastAPI app
 app = FastAPI(title="School Attendance System", version="2.0")
 
@@ -89,11 +109,40 @@ def run_auto_training():
     except Exception as e:
         print(f"[SCHEDULER] ✗ Auto training error: {e}")
 
+
+def _ensure_attendance_log_history():
+    """Allow multiple attendance log entries per student per day."""
+    cursor = None
+    try:
+        if not db.connection:
+            return
+
+        cursor = db.connection.cursor()
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'attendance_logs'
+              AND INDEX_NAME = 'unique_daily_attendance'
+        """)
+        has_unique_constraint = cursor.fetchone()[0] > 0
+
+        if has_unique_constraint:
+            cursor.execute("ALTER TABLE attendance_logs DROP INDEX unique_daily_attendance")
+            db.connection.commit()
+            print("[INFO] Dropped legacy unique_daily_attendance index to allow repeated check-ins")
+    except Exception as e:
+        print(f"[WARNING] Attendance log migration skipped: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+
 # Connect on startup
 @app.on_event("startup")
 async def startup_event():
     """Connect to database on startup and start scheduler"""
     db.connect()
+    _ensure_attendance_log_history()
     _ensure_student_face_columns()
     _sync_face_capture_records_from_dataset()
     
@@ -805,25 +854,62 @@ async def get_today_attendance():
         today = date.today()
         cursor = db.connection.cursor(dictionary=True)
         cursor.execute("""
-            SELECT s.student_id, s.roll_number, s.first_name, s.last_name, 
-                   c.class_name, al.entry_time, al.exit_time, al.status, al.date as attendance_date
+             SELECT s.student_id, s.roll_number, s.first_name, s.last_name, 
+                 c.class_name, al.log_id, al.entry_time, al.exit_time, al.status,
+                 al.date as attendance_date, al.created_at
             FROM students s
             LEFT JOIN classes c ON s.class_id = c.class_id
             LEFT JOIN attendance_logs al ON s.student_id = al.student_id AND al.date = %s
-            ORDER BY s.roll_number
+             ORDER BY al.created_at IS NULL, al.created_at DESC, al.log_id DESC, s.roll_number
         """, (today,))
         attendance = cursor.fetchall()
         
         # Format times
         for record in attendance:
-            if record.get('entry_time'):
-                record['entry_time'] = record['entry_time'].isoformat()
-            if record.get('exit_time'):
-                record['exit_time'] = record['exit_time'].isoformat()
-            if record.get('attendance_date'):
-                # return date as ISO string (YYYY-MM-DD)
-                record['attendance_date'] = record['attendance_date'].isoformat()
+            record['entry_time'] = format_db_value(record.get('entry_time'))
+            record['exit_time'] = format_db_value(record.get('exit_time'))
+            record['attendance_date'] = format_db_value(record.get('attendance_date'))
+            record['created_at'] = format_db_value(record.get('created_at'))
         
+        return attendance
+    except Exception as e:
+        print(f"[ERROR] {type(e).__name__}: {e}")
+        return JSONResponse({'error': f'Database error: {str(e)}'}, status_code=500)
+    finally:
+        if cursor:
+            cursor.close()
+
+@app.get("/api/attendance/recent-checkins")
+async def get_recent_checkins(limit: int = Query(10, ge=1, le=50)):
+    """Get the most recent check-in log entries for today."""
+    cursor = None
+    try:
+        ensure_connection()
+        if not db.connection:
+            print("[WARNING] Recent check-ins fetch skipped because the database connection is unavailable")
+            return []
+
+        today = date.today()
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT al.log_id, s.student_id, s.roll_number, s.first_name, s.last_name,
+                   c.class_name, al.entry_time, al.exit_time, al.status,
+                   al.date as attendance_date, al.created_at
+            FROM attendance_logs al
+            INNER JOIN students s ON al.student_id = s.student_id
+            LEFT JOIN classes c ON s.class_id = c.class_id
+            WHERE al.date = %s
+            ORDER BY al.created_at DESC, al.log_id DESC
+            LIMIT %s
+        """, (today, limit))
+        attendance = cursor.fetchall()
+
+        for record in attendance:
+            record['entry_time'] = format_db_value(record.get('entry_time'))
+            record['exit_time'] = format_db_value(record.get('exit_time'))
+            record['attendance_date'] = format_db_value(record.get('attendance_date'))
+            record['created_at'] = format_db_value(record.get('created_at'))
+
         return attendance
     except Exception as e:
         print(f"[ERROR] {type(e).__name__}: {e}")
@@ -846,10 +932,8 @@ async def get_class_attendance(class_id: int, date_param: str = Query(None)):
         
         # Format response
         for record in attendance:
-            if record.get('entry_time'):
-                record['entry_time'] = record['entry_time'].isoformat()
-            if record.get('exit_time'):
-                record['exit_time'] = record['exit_time'].isoformat()
+            record['entry_time'] = format_db_value(record.get('entry_time'))
+            record['exit_time'] = format_db_value(record.get('exit_time'))
         
         return attendance
     except Exception as e:
@@ -891,11 +975,9 @@ async def get_student_attendance_report(
         
         # Format response
         for record in attendance:
-            record['date'] = record['date'].isoformat()
-            if record.get('entry_time'):
-                record['entry_time'] = record['entry_time'].isoformat()
-            if record.get('exit_time'):
-                record['exit_time'] = record['exit_time'].isoformat()
+            record['date'] = format_db_value(record.get('date'))
+            record['entry_time'] = format_db_value(record.get('entry_time'))
+            record['exit_time'] = format_db_value(record.get('exit_time'))
         
         # Calculate stats
         total_days = len(attendance)
@@ -979,8 +1061,7 @@ async def get_monthly_stats(
         
         # Format dates
         for stat in stats:
-            if stat.get('date'):
-                stat['date'] = stat['date'].isoformat()
+            stat['date'] = format_db_value(stat.get('date'))
         
         return stats
     except Exception as e:
@@ -1661,32 +1742,15 @@ async def attendance_checkin(
             # For now, we'll mark as present if student ID is valid
             pass
         
-        # Get existing attendance for today
+        # Record attendance as a new history row every time the student is detected
         today = date.today()
-        cursor.execute("""
-            SELECT * FROM attendance_logs 
-            WHERE student_id = %s AND date = %s
-        """, (student['student_id'], today))
-        
-        existing = cursor.fetchone()
-        
-        if existing:
-            return JSONResponse({
-                'status': 'warning',
-                'message': f"{student['first_name']} {student['last_name']} already marked present today at {existing['entry_time']}",
-                'student': {
-                    'id': student['student_id'],
-                    'name': f"{student['first_name']} {student['last_name']}",
-                    'roll_number': student['roll_number']
-                }
-            })
-        
-        # Record attendance
-        now = datetime.now().time()
+        checkin_timestamp = datetime.now()
+        now = checkin_timestamp.time()
         cursor.execute("""
             INSERT INTO attendance_logs (student_id, date, entry_time, status)
             VALUES (%s, %s, %s, 'present')
         """, (student['student_id'], today, now))
+        log_id = cursor.lastrowid
         
         # Also record in attendance scans
         cursor.execute("""
@@ -1698,7 +1762,19 @@ async def attendance_checkin(
         
         return JSONResponse({
             'status': 'success',
-            'message': f"✓ {student['first_name']} {student['last_name']} marked present",
+            'message': f"✓ {student['first_name']} {student['last_name']} check-in recorded",
+            'record': {
+                'log_id': log_id,
+                'student_id': student['student_id'],
+                'roll_number': student['roll_number'],
+                'first_name': student['first_name'],
+                'last_name': student['last_name'],
+                'class_name': student.get('class_name'),
+                'status': 'present',
+                'attendance_date': today.isoformat(),
+                'entry_time': now.isoformat(),
+                'created_at': checkin_timestamp.isoformat()
+            },
             'student': {
                 'id': student['student_id'],
                 'name': f"{student['first_name']} {student['last_name']}",
@@ -1719,7 +1795,7 @@ async def attendance_checkin(
 
 @app.get("/api/attendance/checkin-status/{student_id}")
 async def get_checkin_status(student_id: str):
-    """Check if student is already checked in today"""
+    """Get today's check-in history for a student."""
     cursor = None
     try:
         cursor = db.connection.cursor(dictionary=True)
@@ -1730,18 +1806,26 @@ async def get_checkin_status(student_id: str):
             FROM attendance_logs al
             INNER JOIN students s ON s.student_id = al.student_id
             WHERE (s.student_id = %s OR s.roll_number = %s) AND al.date = %s
+            ORDER BY al.created_at DESC, al.log_id DESC
         """, (student_id if student_id.isdigit() else None, student_id, today))
         
-        result = cursor.fetchone()
-        
-        if result:
+        results = cursor.fetchall()
+
+        if results:
+            latest = results[0]
             return {
-                'status': 'already_present',
-                'message': f'Student already checked in at {result["entry_time"]}',
-                'time': str(result['entry_time'])
+                'status': 'checked_in',
+                'message': f'Student has {len(results)} check-in record(s) today',
+                'checkin_count': len(results),
+                'time': str(latest.get('entry_time')),
+                'latest_checkin': {
+                    'date': format_db_value(latest.get('date')),
+                    'time': format_db_value(latest.get('entry_time')),
+                    'status': latest.get('status')
+                }
             }
         else:
-            return {'status': 'not_present', 'message': 'Not yet checked in'}
+            return {'status': 'not_present', 'message': 'No check-in records yet today'}
             
     except Exception as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=500)

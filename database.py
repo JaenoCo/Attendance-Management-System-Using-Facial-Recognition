@@ -118,11 +118,6 @@ class DatabaseConnection:
             today = date.today()
             now = datetime.now().time()
             
-            # Check if already marked today
-            existing = self.get_today_attendance(student_id)
-            if existing:
-                return {'status': 'already_present', 'time': str(existing['entry_time'])}
-            
             query = """
                 INSERT INTO attendance_logs 
                 (student_id, date, entry_time, status)
