@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS attendance_logs (
     remarks VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
-    UNIQUE KEY unique_daily_attendance (student_id, date)
 );
 
 -- Attendance Scan Logs (Raw scan data)
