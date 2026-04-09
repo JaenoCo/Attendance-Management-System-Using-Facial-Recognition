@@ -40,9 +40,47 @@ class FacialRecognitionSystem:
 
         self._last_model_reload_attempt = now
         self._load_models()
+
+    def validate_models(self):
+        """
+        Validate that all required models are loaded and ready.
+        
+        Returns:
+            dict: Status of model validation with details
+        """
+        self._ensure_models_loaded()
+        
+        status = {
+            'detector_loaded': self.detector is not None,
+            'embedder_loaded': self.embedder is not None,
+            'recognizer_loaded': self.recognizer is not None,
+            'label_encoder_loaded': self.le is not None,
+            'all_models_ready': all([
+                self.detector is not None,
+                self.embedder is not None,
+                self.recognizer is not None,
+                self.le is not None
+            ])
+        }
+        
+        return status
+
+    def are_models_ready(self):
+        """
+        Quick check if all models are ready for recognition.
+        
+        Returns:
+            bool: True if all models are loaded, False otherwise
+        """
+        return all([
+            self.detector is not None,
+            self.embedder is not None,
+            self.recognizer is not None,
+            self.le is not None
+        ])
     
     def _load_models(self):
-        """Load face detector and embedder models"""
+        """Load face detector and embedder models with detailed error reporting"""
         try:
             # Load face detector
             proto_path = os.path.join(FACE_DETECTOR_PATH, "deploy.prototxt")
@@ -52,31 +90,55 @@ class FacialRecognitionSystem:
                 self.detector = cv2.dnn.readNetFromCaffe(proto_path, model_path)
                 print("[INFO] Face detector loaded successfully")
             else:
-                print("[WARN] Face detector models not found")
+                missing = []
+                if not os.path.exists(proto_path):
+                    missing.append(f"deploy.prototxt (expected at {proto_path})")
+                if not os.path.exists(model_path):
+                    missing.append(f"res10_300x300_ssd_iter_140000.caffemodel (expected at {model_path})")
+                print(f"[WARN] Face detector models not found: {', '.join(missing)}")
             
             # Load face embedder
             if os.path.exists(FACE_EMBEDDING_MODEL):
                 self.embedder = cv2.dnn.readNetFromTorch(FACE_EMBEDDING_MODEL)
                 print("[INFO] Face embedder loaded successfully")
             else:
-                print("[WARN] Face embedder model not found")
+                print(f"[WARN] Face embedder model not found (expected at {FACE_EMBEDDING_MODEL})")
             
-            # Load recognizer and label encoder
+            # Load recognizer and label encoder  
             if os.path.exists(RECOGNIZER_MODEL) and os.path.exists(LABEL_ENCODER):
-                self.recognizer = pickle.loads(open(RECOGNIZER_MODEL, 'rb').read())
-                self.le = pickle.loads(open(LABEL_ENCODER, 'rb').read())
-                print("[INFO] Recognizer and label encoder loaded successfully")
+                try:
+                    with open(RECOGNIZER_MODEL, 'rb') as f:
+                        self.recognizer = pickle.load(f)
+                    with open(LABEL_ENCODER, 'rb') as f:
+                        self.le = pickle.load(f)
+                    print("[INFO] Recognizer and label encoder loaded successfully")
+                except Exception as e:
+                    print(f"[WARN] Failed to load recognizer models: {e}")
+                    self.recognizer = None
+                    self.le = None
             else:
-                print("[WARN] Recognizer or label encoder not found")
+                missing = []
+                if not os.path.exists(RECOGNIZER_MODEL):
+                    missing.append(f"recognizer.pickle (expected at {RECOGNIZER_MODEL})")
+                if not os.path.exists(LABEL_ENCODER):
+                    missing.append(f"le.pickle (expected at {LABEL_ENCODER})")
+                print(f"[WARN] Recognizer or label encoder not found: {', '.join(missing)}")
         
         except Exception as e:
-            print(f"[ERROR] Error loading models: {e}")
+            print(f"[ERROR] Fatal error loading models: {e}")
+            self.detector = None
+            self.embedder = None
+            self.recognizer = None
+            self.le = None
     
     def detect_faces(self, frame, min_confidence=None):
         """Detect faces in a frame"""
         self._ensure_models_loaded()
         if self.detector is None:
-            return []
+            raise RuntimeError(
+                "Face detector model not loaded. Check that Models/deploy.prototxt and "
+                "Models/res10_300x300_ssd_iter_140000.caffemodel exist."
+            )
         
         try:
             (h, w) = frame.shape[:2]
@@ -100,7 +162,7 @@ class FacialRecognitionSystem:
             return faces
         except Exception as e:
             print(f"[ERROR] Error detecting faces: {e}")
-            return []
+            raise RuntimeError(f"Face detection failed: {str(e)}")
     
     def get_face_embedding(self, face):
         """Extract embedding from a face ROI"""
@@ -174,6 +236,26 @@ class FacialRecognitionSystem:
     def capture_face_from_image(self, image_array, student_id=None, student_name=None, min_confidence=None):
         """Capture and extract embeddings from an image"""
         try:
+            # Validate models are ready
+            if not self.are_models_ready():
+                model_status = self.validate_models()
+                missing = []
+                if not model_status['detector_loaded']:
+                    missing.append("face detector")
+                if not model_status['embedder_loaded']:
+                    missing.append("embedder")
+                if not model_status['recognizer_loaded']:
+                    missing.append("recognizer")
+                if not model_status['label_encoder_loaded']:
+                    missing.append("label encoder")
+                
+                return {
+                    'status': 'error',
+                    'message': f'Facial recognition models not ready. Missing: {", ".join(missing)}. '
+                              f'Please run training_model.py to initialize models.',
+                    'details': model_status
+                }
+
             detections = self.detect_faces(image_array, min_confidence=min_confidence)
 
             if not detections:
@@ -227,6 +309,12 @@ class FacialRecognitionSystem:
                 'embedding': best_face['embedding'].tolist() if isinstance(best_face['embedding'], np.ndarray) else best_face['embedding'],
                 'confidence': best_face['confidence'],
                 'box': best_face['box']
+            }
+        except RuntimeError as e:
+            print(f"[ERROR] Runtime error during face capture: {e}")
+            return {
+                'status': 'error',
+                'message': str(e)
             }
         except Exception as e:
             print(f"[ERROR] Error capturing face: {e}")

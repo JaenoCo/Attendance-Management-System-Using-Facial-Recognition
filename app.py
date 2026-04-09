@@ -16,6 +16,8 @@ from passlib.context import CryptContext
 from facial_recognition import get_facial_recognition_system
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from validators import ImageValidator, ValidationError, ErrorResponse, DatabaseErrorHandler, LoggingSetup
+from ratelimiter import limiter, apply_rate_limit, LIMITS
 import pandas as pd
 from io import BytesIO
 import os
@@ -29,6 +31,7 @@ import sys
 import atexit
 import socket
 import re
+import logging
 from pathlib import Path
 
 
@@ -53,6 +56,14 @@ def format_db_value(value):
 
 # Initialize FastAPI app
 app = FastAPI(title="School Attendance System", version="2.0")
+
+# Setup rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(Exception, limiter.http_exception_handler)
+
+# Setup logging
+logger = LoggingSetup.setup_logging()
+logger.info("School Attendance System Starting...")
 
 # Setup template engine
 templates = Jinja2Templates(directory="templates")
