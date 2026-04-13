@@ -121,6 +121,24 @@ CREATE TABLE IF NOT EXISTS training_sessions (
     INDEX idx_session_status (status)
 );
 
+-- Class Registration Table (Tracks student enrollments in classes with assigned teachers)
+CREATE TABLE IF NOT EXISTS class_registrations (
+    registration_id INT PRIMARY KEY AUTO_INCREMENT,
+    student_id INT NOT NULL,
+    class_id INT NOT NULL,
+    teacher_id INT,
+    registration_date DATE NOT NULL,
+    status ENUM('active', 'inactive', 'completed') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_student_class (student_id, class_id),
+    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+    FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
+    INDEX idx_class_registrations (class_id),
+    INDEX idx_student_registrations (student_id),
+    INDEX idx_teacher_registrations (teacher_id)
+);
+
 -- Create indexes for better query performance
 CREATE INDEX idx_student_date ON attendance_logs(student_id, date);
 CREATE INDEX idx_class_id ON students(class_id);
