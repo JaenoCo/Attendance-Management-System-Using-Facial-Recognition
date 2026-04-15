@@ -159,9 +159,12 @@
             });
         }
 
-        async function directCheckin(studentIdValue) {
+        async function directCheckin(studentIdValue, faceData = null) {
             const formData = new FormData();
             formData.append('student_id', studentIdValue);
+            if (faceData) {
+                formData.append('face_data', faceData);
+            }
 
             const response = await fetch('/api/attendance/checkin', {
                 method: 'POST',
@@ -232,7 +235,7 @@
                 if (data.recognized && data.student) {
                     recognizedStudent = data.student;
                     status.textContent = `Recognized: ${data.student.name}`;
-                    await directCheckin(data.student.roll_number || data.student.id);
+                    await directCheckin(data.student.roll_number || data.student.id, imageData);
                 } else if (data.detected || (data.faces && data.faces.length)) {
                     status.textContent = 'Face detected';
                 } else {

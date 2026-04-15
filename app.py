@@ -163,6 +163,7 @@ async def startup_event():
     """Connect to database on startup and start scheduler"""
     db.connect()
     _ensure_attendance_log_history()
+    _ensure_schedule_schema()
     _ensure_student_face_columns()
     _sync_face_capture_records_from_dataset()
     
@@ -662,6 +663,376 @@ def _upsert_student_face_enrollment(student_id, new_embedding, image_array=None)
         if cursor:
             cursor.close()
 
+
+DAY_NAMES = (
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+)
+
+DAY_NAME_TO_INDEX = {name: index + 1 for index, name in enumerate(DAY_NAMES)}
+
+
+def _parse_time_value(value):
+    """Parse a time-like value into a time object."""
+    if value in (None, ''):
+        return None
+    if hasattr(value, 'hour') and hasattr(value, 'minute'):
+        return value
+    if isinstance(value, str):
+        for time_format in ('%H:%M:%S', '%H:%M'):
+            try:
+                return datetime.strptime(value.strip(), time_format).time()
+            except ValueError:
+                continue
+    raise ValueError(f'Invalid time value: {value}')
+
+
+def _parse_date_value(value):
+    """Parse a date-like value into a date object."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        return datetime.strptime(value.strip(), '%Y-%m-%d').date()
+    raise ValueError(f'Invalid date value: {value}')
+
+
+def _normalize_day_of_week(value):
+    """Normalize a weekday value to a canonical day name."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, int):
+        if 1 <= value <= 7:
+            return DAY_NAMES[value - 1]
+        raise ValueError(f'Invalid day of week value: {value}')
+
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return _normalize_day_of_week(int(text))
+
+    lowered = text.lower()
+    for name in DAY_NAMES:
+        if lowered == name.lower():
+            return name
+
+    raise ValueError(f'Invalid day of week value: {value}')
+
+
+def _current_day_name(current_datetime):
+    """Return the weekday name for a datetime."""
+    return current_datetime.strftime('%A')
+
+
+def _schedule_row_to_payload(row):
+    """Convert a schedule row to a JSON-safe dictionary."""
+    if not row:
+        return None
+
+    return {key: format_db_value(value) for key, value in row.items()}
+
+
+async def _read_request_payload(request: Request):
+    """Read JSON or form payload from a request."""
+    content_type = (request.headers.get('content-type') or '').lower()
+    if 'application/json' in content_type:
+        return await request.json()
+
+    form = await request.form()
+    return dict(form)
+
+
+def _ensure_schedule_schema():
+    """Create schedule tables and add attendance columns used by schedule-aware check-ins."""
+    if not db.connection:
+        return
+
+    cursor = None
+    try:
+        cursor = db.connection.cursor()
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS class_schedules (
+                schedule_id INT PRIMARY KEY AUTO_INCREMENT,
+                teacher_id INT NOT NULL,
+                class_id INT NOT NULL,
+                subject VARCHAR(150) NOT NULL,
+                room VARCHAR(100) DEFAULT NULL,
+                day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+                start_time TIME NOT NULL,
+                end_time TIME NOT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE CASCADE,
+                FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+                INDEX idx_schedule_teacher_day (teacher_id, day_of_week),
+                INDEX idx_schedule_class_day (class_id, day_of_week),
+                INDEX idx_schedule_day_time (day_of_week, start_time, end_time)
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schedule_overrides (
+                override_id INT PRIMARY KEY AUTO_INCREMENT,
+                schedule_id INT NOT NULL,
+                override_date DATE NOT NULL,
+                original_day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+                original_start_time TIME NOT NULL,
+                original_end_time TIME NOT NULL,
+                effective_day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+                effective_start_time TIME NOT NULL,
+                effective_end_time TIME NOT NULL,
+                teacher_id INT DEFAULT NULL,
+                class_id INT DEFAULT NULL,
+                subject VARCHAR(150) DEFAULT NULL,
+                room VARCHAR(100) DEFAULT NULL,
+                override_type ENUM('reschedule', 'cancel', 'room_change', 'substitute') NOT NULL DEFAULT 'reschedule',
+                reason VARCHAR(255) DEFAULT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (schedule_id) REFERENCES class_schedules(schedule_id) ON DELETE CASCADE,
+                FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
+                FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE SET NULL,
+                INDEX idx_override_schedule_date (schedule_id, override_date),
+                INDEX idx_override_date_time (override_date, effective_start_time, effective_end_time),
+                INDEX idx_override_class_date (class_id, override_date)
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'attendance_logs'
+            """
+        )
+        existing_columns = {row[0] for row in cursor.fetchall()}
+
+        schedule_columns = [
+            ('schedule_id', 'ALTER TABLE attendance_logs ADD COLUMN schedule_id INT NULL AFTER student_id'),
+            ('schedule_override_id', 'ALTER TABLE attendance_logs ADD COLUMN schedule_override_id INT NULL AFTER schedule_id'),
+            ('teacher_id', 'ALTER TABLE attendance_logs ADD COLUMN teacher_id INT NULL AFTER schedule_override_id'),
+            ('class_id', 'ALTER TABLE attendance_logs ADD COLUMN class_id INT NULL AFTER teacher_id'),
+            ('subject', 'ALTER TABLE attendance_logs ADD COLUMN subject VARCHAR(150) NULL AFTER class_id'),
+        ]
+
+        for column_name, alter_sql in schedule_columns:
+            if column_name not in existing_columns:
+                print(f"[INFO] Adding missing attendance_logs.{column_name} column")
+                cursor.execute(alter_sql)
+
+        db.connection.commit()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure schedule schema: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+
+
+def _resolve_student_context(student_id=None, class_id=None):
+    """Resolve the student's enrollment class for schedule matching."""
+    if class_id is not None:
+        return {'student_id': student_id, 'class_id': class_id}
+
+    if student_id is None or not db.connection:
+        return {'student_id': student_id, 'class_id': None}
+
+    cursor = None
+    try:
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT student_id, class_id
+            FROM students
+            WHERE student_id = %s OR roll_number = %s
+            LIMIT 1
+            """,
+            (student_id, student_id)
+        )
+        student = cursor.fetchone()
+        if not student:
+            return {'student_id': student_id, 'class_id': None}
+        return {'student_id': student.get('student_id'), 'class_id': student.get('class_id')}
+    except Exception:
+        return {'student_id': student_id, 'class_id': None}
+    finally:
+        if cursor:
+            cursor.close()
+
+
+def get_active_schedule(current_datetime, student_id=None, class_id=None):
+    """Return the active schedule or override for the given datetime and class context."""
+    if not db.connection:
+        return None
+
+    context = _resolve_student_context(student_id=student_id, class_id=class_id)
+    target_class_id = context.get('class_id')
+    if target_class_id is None:
+        return None
+
+    current_date = current_datetime.date()
+    current_time = current_datetime.time()
+    current_day = _current_day_name(current_datetime)
+
+    cursor = None
+    try:
+        cursor = db.connection.cursor(dictionary=True)
+
+        cursor.execute(
+            """
+            SELECT so.override_id, so.schedule_id AS schedule_override_source_id,
+                   so.override_date, so.original_day_of_week, so.original_start_time,
+                   so.original_end_time, so.effective_day_of_week, so.effective_start_time,
+                   so.effective_end_time, so.teacher_id AS override_teacher_id,
+                   so.class_id AS override_class_id, so.subject AS override_subject,
+                   so.room AS override_room, so.override_type, so.reason,
+                   cs.teacher_id AS base_teacher_id, cs.class_id AS base_class_id,
+                   cs.subject AS base_subject, cs.room AS base_room,
+                   cs.day_of_week AS base_day_of_week, cs.start_time AS base_start_time,
+                   cs.end_time AS base_end_time
+            FROM schedule_overrides so
+            INNER JOIN class_schedules cs ON cs.schedule_id = so.schedule_id
+            WHERE so.is_active = 1
+              AND so.override_date = %s
+              AND COALESCE(so.class_id, cs.class_id) = %s
+              AND %s >= so.effective_start_time
+              AND %s < so.effective_end_time
+            ORDER BY so.updated_at DESC, so.created_at DESC, so.override_id DESC
+            LIMIT 1
+            """,
+            (current_date, target_class_id, current_time, current_time)
+        )
+        override_row = cursor.fetchone()
+        if override_row:
+            return {
+                'schedule_id': override_row.get('schedule_override_source_id'),
+                'schedule_override_id': override_row.get('override_id'),
+                'source': 'override',
+                'override_type': override_row.get('override_type'),
+                'override_date': override_row.get('override_date'),
+                'day_of_week': override_row.get('effective_day_of_week') or current_day,
+                'start_time': override_row.get('effective_start_time'),
+                'end_time': override_row.get('effective_end_time'),
+                'teacher_id': override_row.get('override_teacher_id') or override_row.get('base_teacher_id'),
+                'class_id': override_row.get('override_class_id') or override_row.get('base_class_id'),
+                'subject': override_row.get('override_subject') or override_row.get('base_subject'),
+                'room': override_row.get('override_room') or override_row.get('base_room'),
+                'reason': override_row.get('reason'),
+                'original_day_of_week': override_row.get('original_day_of_week'),
+                'original_start_time': override_row.get('original_start_time'),
+                'original_end_time': override_row.get('original_end_time'),
+                'effective_day_of_week': override_row.get('effective_day_of_week'),
+                'effective_start_time': override_row.get('effective_start_time'),
+                'effective_end_time': override_row.get('effective_end_time'),
+            }
+
+        cursor.execute(
+            """
+            SELECT cs.schedule_id, cs.teacher_id, cs.class_id, cs.subject, cs.room,
+                   cs.day_of_week, cs.start_time, cs.end_time,
+                   t.first_name AS teacher_first_name, t.last_name AS teacher_last_name,
+                   c.class_name
+            FROM class_schedules cs
+            INNER JOIN classes c ON c.class_id = cs.class_id
+            LEFT JOIN teachers t ON t.teacher_id = cs.teacher_id
+            WHERE cs.is_active = 1
+              AND cs.class_id = %s
+              AND cs.day_of_week = %s
+              AND %s >= cs.start_time
+              AND %s < cs.end_time
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM schedule_overrides so
+                  WHERE so.schedule_id = cs.schedule_id
+                    AND so.override_date = %s
+                    AND so.is_active = 1
+              )
+            ORDER BY cs.start_time ASC, cs.schedule_id DESC
+            LIMIT 1
+            """,
+            (target_class_id, current_day, current_time, current_time, current_date)
+        )
+        schedule_row = cursor.fetchone()
+        if not schedule_row:
+            return None
+
+        schedule_row['source'] = 'default'
+        schedule_row['override_date'] = current_date
+        schedule_row['schedule_override_id'] = None
+        return schedule_row
+    except Exception as e:
+        print(f"[WARNING] Could not resolve active schedule: {e}")
+        return None
+    finally:
+        if cursor:
+            cursor.close()
+
+
+def _recognize_student_from_face_image(image_data):
+    """Recognize a student from base64-encoded face image data."""
+    if not image_data:
+        return None, 'No image provided'
+
+    try:
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return None, 'Invalid image format'
+
+        fr_system = get_facial_recognition_system()
+        capture_result = fr_system.capture_face_from_image(frame, min_confidence=LIVE_FACE_DETECTION_THRESHOLD)
+        if capture_result.get('status') != 'success':
+            return None, capture_result.get('message', 'Face detected, but embedding extraction failed')
+
+        live_embedding = _to_flat_embedding(capture_result.get('embedding'))
+        if live_embedding is None:
+            return None, 'Could not prepare face embedding for matching'
+
+        _sync_face_capture_records_from_dataset()
+
+        cursor = None
+        try:
+            ensure_connection()
+            if not db.connection:
+                return None, 'Database connection is unavailable'
+
+            cursor = db.connection.cursor(dictionary=True)
+            student, _, _ = _find_student_by_capture_similarity(
+                cursor,
+                fr_system,
+                live_embedding,
+                min_similarity=FACE_MATCH_SIMILARITY_THRESHOLD
+            )
+            if not student:
+                return None, 'Face does not match any student in the database'
+            return student, None
+        finally:
+            if cursor:
+                cursor.close()
+    except Exception as e:
+        return None, f'Face recognition error: {str(e)}'
+
 def ensure_connection():
     """Ensure database connection is active"""
     max_retries = 3
@@ -1152,6 +1523,405 @@ async def get_classes():
         if cursor:
             cursor.close()
 
+
+def _group_schedules_by_day(schedule_rows):
+    """Group schedule rows by weekday name."""
+    grouped = {day: [] for day in DAY_NAMES}
+    for row in schedule_rows or []:
+        day_name = row.get('day_of_week') or row.get('base_day_of_week') or row.get('effective_day_of_week')
+        if day_name not in grouped:
+            continue
+        grouped[day_name].append(_schedule_row_to_payload(row))
+    return grouped
+
+
+def _has_schedule_conflict(cursor, teacher_id, class_id, day_of_week, start_time, end_time, exclude_schedule_id=None):
+    """Check for overlapping schedules for the same teacher or class."""
+    query = """
+        SELECT schedule_id, teacher_id, class_id, subject, start_time, end_time
+        FROM class_schedules
+        WHERE is_active = 1
+          AND day_of_week = %s
+          AND (
+                teacher_id = %s
+                OR class_id = %s
+          )
+          AND start_time < %s
+          AND end_time > %s
+    """
+    params = [day_of_week, teacher_id, class_id, end_time, start_time]
+    if exclude_schedule_id is not None:
+        query += " AND schedule_id <> %s"
+        params.append(exclude_schedule_id)
+
+    cursor.execute(query, tuple(params))
+    return cursor.fetchall() or []
+
+
+@app.get("/api/schedules/professor/{teacher_id}")
+async def get_schedules_by_professor(request: Request, teacher_id: int):
+    """Return all schedules for a professor grouped by day."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+
+    cursor = None
+    try:
+        ensure_connection()
+        if not db.connection:
+            return JSONResponse({'error': 'Database connection is unavailable'}, status_code=503)
+
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT cs.schedule_id, cs.teacher_id, cs.class_id, cs.subject, cs.room,
+                   cs.day_of_week, cs.start_time, cs.end_time, cs.is_active,
+                   c.class_name,
+                   CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
+                   t.employee_id
+            FROM class_schedules cs
+            INNER JOIN classes c ON c.class_id = cs.class_id
+            INNER JOIN teachers t ON t.teacher_id = cs.teacher_id
+            WHERE cs.teacher_id = %s
+            ORDER BY FIELD(cs.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), cs.start_time
+            """,
+            (teacher_id,)
+        )
+        schedules = cursor.fetchall() or []
+
+        schedule_ids = [row.get('schedule_id') for row in schedules if row.get('schedule_id')]
+        overrides_by_schedule = {}
+        if schedule_ids:
+            placeholders = ','.join(['%s'] * len(schedule_ids))
+            cursor.execute(
+                f"""
+                SELECT override_id, schedule_id, override_date, original_day_of_week,
+                       original_start_time, original_end_time, effective_day_of_week,
+                       effective_start_time, effective_end_time, teacher_id, class_id,
+                       subject, room, override_type, reason, is_active, created_at, updated_at
+                FROM schedule_overrides
+                WHERE schedule_id IN ({placeholders})
+                ORDER BY override_date DESC, created_at DESC, override_id DESC
+                """,
+                tuple(schedule_ids)
+            )
+            for override in cursor.fetchall() or []:
+                schedule_override_id = override.get('schedule_id')
+                overrides_by_schedule.setdefault(schedule_override_id, []).append(_schedule_row_to_payload(override))
+
+        for row in schedules:
+            row['overrides'] = overrides_by_schedule.get(row.get('schedule_id'), [])
+
+        grouped = _group_schedules_by_day(schedules)
+        teacher_name = schedules[0].get('teacher_name') if schedules else None
+
+        return {
+            'status': 'success',
+            'teacher_id': teacher_id,
+            'teacher_name': teacher_name,
+            'grouped_by_day': grouped,
+            'schedules': [_schedule_row_to_payload(row) for row in schedules],
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to get professor schedules: {e}")
+        return JSONResponse({'status': 'error', 'message': str(e)}, status_code=500)
+    finally:
+        if cursor:
+            cursor.close()
+
+
+@app.post("/api/schedules")
+async def create_schedule(request: Request):
+    """Create a new schedule."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+
+    cursor = None
+    try:
+        payload = await _read_request_payload(request)
+        teacher_id = int(payload.get('teacher_id'))
+        class_id = int(payload.get('class_id'))
+        subject = str(payload.get('subject') or '').strip()
+        room = str(payload.get('room') or '').strip() or None
+        day_of_week = _normalize_day_of_week(payload.get('day_of_week'))
+        start_time = _parse_time_value(payload.get('start_time'))
+        end_time = _parse_time_value(payload.get('end_time'))
+
+        if not subject:
+            return JSONResponse({'status': 'error', 'message': 'Subject is required'}, status_code=400)
+        if not day_of_week:
+            return JSONResponse({'status': 'error', 'message': 'day_of_week is required'}, status_code=400)
+        if not start_time or not end_time or start_time >= end_time:
+            return JSONResponse({'status': 'error', 'message': 'start_time must be earlier than end_time'}, status_code=400)
+
+        ensure_connection()
+        if not db.connection:
+            return JSONResponse({'error': 'Database connection is unavailable'}, status_code=503)
+
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute("SELECT teacher_id FROM teachers WHERE teacher_id = %s", (teacher_id,))
+        if not cursor.fetchone():
+            return JSONResponse({'status': 'error', 'message': 'Teacher not found'}, status_code=404)
+
+        cursor.execute("SELECT class_id FROM classes WHERE class_id = %s", (class_id,))
+        if not cursor.fetchone():
+            return JSONResponse({'status': 'error', 'message': 'Class not found'}, status_code=404)
+
+        conflicts = _has_schedule_conflict(cursor, teacher_id, class_id, day_of_week, start_time, end_time)
+        if conflicts:
+            return JSONResponse({
+                'status': 'error',
+                'message': 'Schedule conflicts with an existing class or professor assignment',
+                'conflicts': [_schedule_row_to_payload(row) for row in conflicts],
+            }, status_code=409)
+
+        cursor.execute(
+            """
+            INSERT INTO class_schedules (teacher_id, class_id, subject, room, day_of_week, start_time, end_time, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
+            """,
+            (teacher_id, class_id, subject, room, day_of_week, start_time, end_time)
+        )
+        db.connection.commit()
+
+        return JSONResponse({
+            'status': 'success',
+            'message': 'Schedule created successfully',
+            'schedule_id': cursor.lastrowid,
+        })
+    except (ValueError, TypeError) as e:
+        return JSONResponse({'status': 'error', 'message': f'Invalid schedule data: {str(e)}'}, status_code=400)
+    except Exception as e:
+        if db.connection:
+            db.connection.rollback()
+        print(f"[ERROR] Failed to create schedule: {e}")
+        return JSONResponse({'status': 'error', 'message': f'Failed to create schedule: {str(e)}'}, status_code=500)
+    finally:
+        if cursor:
+            cursor.close()
+
+
+@app.put("/api/schedules/{schedule_id}")
+async def edit_schedule(request: Request, schedule_id: int):
+    """Edit an existing schedule."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+
+    cursor = None
+    try:
+        payload = await _read_request_payload(request)
+        ensure_connection()
+        if not db.connection:
+            return JSONResponse({'error': 'Database connection is unavailable'}, status_code=503)
+
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM class_schedules WHERE schedule_id = %s", (schedule_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            return JSONResponse({'status': 'error', 'message': 'Schedule not found'}, status_code=404)
+
+        teacher_id = int(payload.get('teacher_id', existing.get('teacher_id')))
+        class_id = int(payload.get('class_id', existing.get('class_id')))
+        subject = str(payload.get('subject', existing.get('subject')) or '').strip()
+        room_value = payload.get('room', existing.get('room'))
+        room = str(room_value).strip() or None if room_value is not None else None
+        day_of_week = _normalize_day_of_week(payload.get('day_of_week', existing.get('day_of_week')))
+        start_time = _parse_time_value(payload.get('start_time', existing.get('start_time')))
+        end_time = _parse_time_value(payload.get('end_time', existing.get('end_time')))
+
+        if not subject:
+            return JSONResponse({'status': 'error', 'message': 'Subject is required'}, status_code=400)
+        if not day_of_week:
+            return JSONResponse({'status': 'error', 'message': 'day_of_week is required'}, status_code=400)
+        if not start_time or not end_time or start_time >= end_time:
+            return JSONResponse({'status': 'error', 'message': 'start_time must be earlier than end_time'}, status_code=400)
+
+        cursor.execute("SELECT teacher_id FROM teachers WHERE teacher_id = %s", (teacher_id,))
+        if not cursor.fetchone():
+            return JSONResponse({'status': 'error', 'message': 'Teacher not found'}, status_code=404)
+
+        cursor.execute("SELECT class_id FROM classes WHERE class_id = %s", (class_id,))
+        if not cursor.fetchone():
+            return JSONResponse({'status': 'error', 'message': 'Class not found'}, status_code=404)
+
+        conflicts = _has_schedule_conflict(cursor, teacher_id, class_id, day_of_week, start_time, end_time, exclude_schedule_id=schedule_id)
+        if conflicts:
+            return JSONResponse({
+                'status': 'error',
+                'message': 'Updated schedule conflicts with an existing class or professor assignment',
+                'conflicts': [_schedule_row_to_payload(row) for row in conflicts],
+            }, status_code=409)
+
+        cursor.execute(
+            """
+            UPDATE class_schedules
+            SET teacher_id = %s,
+                class_id = %s,
+                subject = %s,
+                room = %s,
+                day_of_week = %s,
+                start_time = %s,
+                end_time = %s
+            WHERE schedule_id = %s
+            """,
+            (teacher_id, class_id, subject, room, day_of_week, start_time, end_time, schedule_id)
+        )
+        db.connection.commit()
+
+        return JSONResponse({'status': 'success', 'message': 'Schedule updated successfully'})
+    except (ValueError, TypeError) as e:
+        return JSONResponse({'status': 'error', 'message': f'Invalid schedule data: {str(e)}'}, status_code=400)
+    except Exception as e:
+        if db.connection:
+            db.connection.rollback()
+        print(f"[ERROR] Failed to update schedule: {e}")
+        return JSONResponse({'status': 'error', 'message': f'Failed to update schedule: {str(e)}'}, status_code=500)
+    finally:
+        if cursor:
+            cursor.close()
+
+
+@app.delete("/api/schedules/{schedule_id}")
+async def delete_schedule(request: Request, schedule_id: int):
+    """Deactivate a schedule."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+
+    cursor = None
+    try:
+        ensure_connection()
+        if not db.connection:
+            return JSONResponse({'error': 'Database connection is unavailable'}, status_code=503)
+
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute("SELECT schedule_id, is_active FROM class_schedules WHERE schedule_id = %s", (schedule_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            return JSONResponse({'status': 'error', 'message': 'Schedule not found'}, status_code=404)
+
+        cursor.execute("UPDATE class_schedules SET is_active = 0 WHERE schedule_id = %s", (schedule_id,))
+        db.connection.commit()
+
+        return JSONResponse({'status': 'success', 'message': 'Schedule deleted successfully'})
+    except Exception as e:
+        if db.connection:
+            db.connection.rollback()
+        print(f"[ERROR] Failed to delete schedule: {e}")
+        return JSONResponse({'status': 'error', 'message': f'Failed to delete schedule: {str(e)}'}, status_code=500)
+    finally:
+        if cursor:
+            cursor.close()
+
+
+@app.post("/api/schedules/overrides")
+async def create_schedule_override(request: Request):
+    """Create a temporary schedule override or reschedule."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+
+    cursor = None
+    try:
+        payload = await _read_request_payload(request)
+        schedule_id = int(payload.get('schedule_id'))
+        override_date = _parse_date_value(payload.get('override_date'))
+
+        ensure_connection()
+        if not db.connection:
+            return JSONResponse({'error': 'Database connection is unavailable'}, status_code=503)
+
+        cursor = db.connection.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM class_schedules WHERE schedule_id = %s AND is_active = 1", (schedule_id,))
+        base_schedule = cursor.fetchone()
+        if not base_schedule:
+            return JSONResponse({'status': 'error', 'message': 'Base schedule not found'}, status_code=404)
+
+        override_type = str(payload.get('override_type') or 'reschedule').strip().lower()
+        if override_type not in {'reschedule', 'cancel', 'room_change', 'substitute'}:
+            return JSONResponse({'status': 'error', 'message': 'Invalid override_type'}, status_code=400)
+
+        effective_day_of_week = _normalize_day_of_week(
+            payload.get('effective_day_of_week') or payload.get('day_of_week') or override_date.strftime('%A')
+        )
+        original_day_of_week = _normalize_day_of_week(base_schedule.get('day_of_week'))
+        original_start_time = _parse_time_value(base_schedule.get('start_time'))
+        original_end_time = _parse_time_value(base_schedule.get('end_time'))
+
+        effective_start_time = _parse_time_value(payload.get('effective_start_time') or payload.get('start_time') or original_start_time)
+        effective_end_time = _parse_time_value(payload.get('effective_end_time') or payload.get('end_time') or original_end_time)
+        if effective_start_time and effective_end_time and effective_start_time >= effective_end_time:
+            return JSONResponse({'status': 'error', 'message': 'effective_start_time must be earlier than effective_end_time'}, status_code=400)
+
+        teacher_id = int(payload.get('teacher_id')) if payload.get('teacher_id') not in (None, '') else base_schedule.get('teacher_id')
+        class_id = int(payload.get('class_id')) if payload.get('class_id') not in (None, '') else base_schedule.get('class_id')
+        subject = str(payload.get('subject') or base_schedule.get('subject') or '').strip()
+        room_value = payload.get('room', base_schedule.get('room'))
+        room = str(room_value).strip() or None if room_value is not None else None
+        reason = str(payload.get('reason') or '').strip() or None
+
+        cursor.execute(
+            """
+            SELECT override_id
+            FROM schedule_overrides
+            WHERE schedule_id = %s
+              AND override_date = %s
+              AND effective_start_time = %s
+              AND effective_end_time = %s
+              AND is_active = 1
+            LIMIT 1
+            """,
+            (schedule_id, override_date, effective_start_time, effective_end_time)
+        )
+        existing_override = cursor.fetchone()
+        if existing_override:
+            return JSONResponse({'status': 'error', 'message': 'An override already exists for this schedule and time slot'}, status_code=409)
+
+        cursor.execute(
+            """
+            INSERT INTO schedule_overrides (
+                schedule_id, override_date, original_day_of_week, original_start_time, original_end_time,
+                effective_day_of_week, effective_start_time, effective_end_time, teacher_id, class_id,
+                subject, room, override_type, reason, is_active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+            """,
+            (
+                schedule_id,
+                override_date,
+                original_day_of_week,
+                original_start_time,
+                original_end_time,
+                effective_day_of_week,
+                effective_start_time,
+                effective_end_time,
+                teacher_id,
+                class_id,
+                subject,
+                room,
+                override_type,
+                reason,
+            )
+        )
+        db.connection.commit()
+
+        return JSONResponse({
+            'status': 'success',
+            'message': 'Schedule override created successfully',
+            'override_id': cursor.lastrowid,
+        })
+    except (ValueError, TypeError) as e:
+        return JSONResponse({'status': 'error', 'message': f'Invalid override data: {str(e)}'}, status_code=400)
+    except Exception as e:
+        if db.connection:
+            db.connection.rollback()
+        print(f"[ERROR] Failed to create schedule override: {e}")
+        return JSONResponse({'status': 'error', 'message': f'Failed to create override: {str(e)}'}, status_code=500)
+    finally:
+        if cursor:
+            cursor.close()
+
 # ==================== CRUD Operations ====================
 
 @app.post("/api/students")
@@ -1269,6 +2039,19 @@ async def face_enrollment_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     
     return templates.TemplateResponse("face_enrollment.html", {
+        "request": request,
+        "username": current_user
+    })
+
+
+@app.get("/schedule")
+async def schedule_page(request: Request):
+    """Schedule management page."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    return templates.TemplateResponse("schedule.html", {
         "request": request,
         "username": current_user
     })
@@ -1888,10 +2671,10 @@ async def attendance_checkin_page(request: Request):
 
 @app.post("/api/attendance/checkin")
 async def attendance_checkin(
-    student_id: str = Form(...),
+    student_id: str = Form(None),
     face_data: str = Form(None)
 ):
-    """Mark attendance using face recognition"""
+    """Mark attendance using face recognition and the active schedule."""
     cursor = None
     try:
         ensure_connection()
@@ -1902,32 +2685,83 @@ async def attendance_checkin(
             )
 
         cursor = db.connection.cursor(dictionary=True)
-        
-        # Verify student exists
-        cursor.execute("SELECT * FROM students WHERE roll_number = %s OR student_id = %s", 
-                      (student_id, student_id if student_id.isdigit() else None))
-        student = cursor.fetchone()
-        
+
+        student = None
+        face_error = None
+        if face_data:
+            student, face_error = _recognize_student_from_face_image(face_data)
+
+        if not student and student_id:
+            cursor.execute(
+                """
+                SELECT s.student_id, s.roll_number, s.first_name, s.last_name, s.class_id,
+                       c.class_name
+                FROM students s
+                LEFT JOIN classes c ON c.class_id = s.class_id
+                WHERE s.roll_number = %s OR s.student_id = %s
+                LIMIT 1
+                """,
+                (student_id, student_id if str(student_id).isdigit() else None)
+            )
+            student = cursor.fetchone()
+
         if not student:
             return JSONResponse(
-                {'status': 'error', 'message': 'Student not found'},
+                {'status': 'error', 'message': face_error or 'Student not found'},
                 status_code=404
             )
-        
-        # Trigger face recognition
-        if face_data:
-            # Would need to implement face recognition here
-            # For now, we'll mark as present if student ID is valid
-            pass
 
-        cursor.execute("""
-            SELECT log_id, student_id, date, entry_time, exit_time, status, created_at
+        current_datetime = datetime.now()
+        active_schedule = get_active_schedule(
+            current_datetime,
+            student_id=student['student_id'],
+            class_id=student.get('class_id')
+        )
+
+        if not active_schedule:
+            return JSONResponse({
+                'status': 'error',
+                'message': 'No active schedule found for the current time and class',
+                'student': {
+                    'id': student['student_id'],
+                    'name': f"{student['first_name']} {student['last_name']}",
+                    'roll_number': student['roll_number']
+                }
+            }, status_code=409)
+
+        schedule_id = active_schedule.get('schedule_id')
+        schedule_override_id = active_schedule.get('schedule_override_id')
+        today = current_datetime.date()
+        now = current_datetime.time()
+
+        cursor.execute(
+            """
+            SELECT log_id, student_id, schedule_id, schedule_override_id, teacher_id, class_id,
+                   subject, date, entry_time, exit_time, status, created_at
             FROM attendance_logs
-            WHERE student_id = %s AND date = %s
+            WHERE student_id = %s
+              AND date = %s
+              AND COALESCE(schedule_id, 0) = COALESCE(%s, 0)
+              AND COALESCE(schedule_override_id, 0) = COALESCE(%s, 0)
             ORDER BY created_at DESC, log_id DESC
             LIMIT 1
-        """, (student['student_id'], date.today()))
+            """,
+            (student['student_id'], today, schedule_id, schedule_override_id)
+        )
         existing_log = cursor.fetchone()
+
+        schedule_payload = {
+            'schedule_id': schedule_id,
+            'schedule_override_id': schedule_override_id,
+            'source': active_schedule.get('source'),
+            'teacher_id': active_schedule.get('teacher_id'),
+            'class_id': active_schedule.get('class_id') or student.get('class_id'),
+            'subject': active_schedule.get('subject'),
+            'room': active_schedule.get('room'),
+            'day_of_week': active_schedule.get('day_of_week') or _current_day_name(current_datetime),
+            'start_time': format_db_value(active_schedule.get('start_time')),
+            'end_time': format_db_value(active_schedule.get('end_time')),
+        }
 
         if existing_log:
             existing_record = {
@@ -1937,16 +2771,22 @@ async def attendance_checkin(
                 'first_name': student['first_name'],
                 'last_name': student['last_name'],
                 'class_name': student.get('class_name'),
+                'schedule_id': existing_log.get('schedule_id'),
+                'schedule_override_id': existing_log.get('schedule_override_id'),
+                'teacher_id': existing_log.get('teacher_id'),
+                'class_id': existing_log.get('class_id'),
+                'subject': existing_log.get('subject'),
                 'status': existing_log.get('status') or 'present',
                 'attendance_date': format_db_value(existing_log.get('date')),
                 'entry_time': format_db_value(existing_log.get('entry_time')),
-                'created_at': format_db_value(existing_log.get('created_at'))
+                'created_at': format_db_value(existing_log.get('created_at')),
             }
 
             return JSONResponse({
                 'status': 'warning',
-                'message': f"✓ {student['first_name']} {student['last_name']} already checked in today",
+                'message': f"✓ {student['first_name']} {student['last_name']} already checked in for this schedule",
                 'record': existing_record,
+                'schedule': schedule_payload,
                 'student': {
                     'id': student['student_id'],
                     'name': f"{student['first_name']} {student['last_name']}",
@@ -1954,25 +2794,38 @@ async def attendance_checkin(
                     'time': format_db_value(existing_log.get('entry_time'))
                 }
             })
-        
-        # Record attendance once per student per day
-        today = date.today()
-        checkin_timestamp = datetime.now()
-        now = checkin_timestamp.time()
-        cursor.execute("""
-            INSERT INTO attendance_logs (student_id, date, entry_time, status)
-            VALUES (%s, %s, %s, 'present')
-        """, (student['student_id'], today, now))
+
+        cursor.execute(
+            """
+            INSERT INTO attendance_logs (
+                student_id, schedule_id, schedule_override_id, teacher_id, class_id, subject,
+                date, entry_time, status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'present')
+            """,
+            (
+                student['student_id'],
+                schedule_id,
+                schedule_override_id,
+                schedule_payload['teacher_id'],
+                schedule_payload['class_id'],
+                schedule_payload['subject'],
+                today,
+                now,
+            )
+        )
         log_id = cursor.lastrowid
-        
-        # Also record in attendance scans
-        cursor.execute("""
+
+        cursor.execute(
+            """
             INSERT INTO attendance_scans (student_id, scan_type, scan_time, confidence_score, recognized)
             VALUES (%s, 'entry', %s, 0.95, TRUE)
-        """, (student['student_id'], datetime.now()))
-        
+            """,
+            (student['student_id'], current_datetime)
+        )
+
         db.connection.commit()
-        
+
         return JSONResponse({
             'status': 'success',
             'message': f"✓ {student['first_name']} {student['last_name']} check-in recorded",
@@ -1983,11 +2836,18 @@ async def attendance_checkin(
                 'first_name': student['first_name'],
                 'last_name': student['last_name'],
                 'class_name': student.get('class_name'),
+                'schedule_id': schedule_id,
+                'schedule_override_id': schedule_override_id,
+                'teacher_id': schedule_payload['teacher_id'],
+                'class_id': schedule_payload['class_id'],
+                'subject': schedule_payload['subject'],
+                'room': schedule_payload['room'],
                 'status': 'present',
                 'attendance_date': today.isoformat(),
                 'entry_time': now.isoformat(),
-                'created_at': checkin_timestamp.isoformat()
+                'created_at': current_datetime.isoformat(),
             },
+            'schedule': schedule_payload,
             'student': {
                 'id': student['student_id'],
                 'name': f"{student['first_name']} {student['last_name']}",
@@ -1995,7 +2855,7 @@ async def attendance_checkin(
                 'time': now.isoformat()
             }
         })
-        
+
     except Exception as e:
         print(f"[ERROR] Check-in failed - {type(e).__name__}: {e}")
         return JSONResponse(

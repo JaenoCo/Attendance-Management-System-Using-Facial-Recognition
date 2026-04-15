@@ -198,6 +198,7 @@
                         // perform check-in using roll number if available, else id
                         const checkinForm = new FormData();
                         checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                        checkinForm.append('face_data', imageData);
                         const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
                         const checkData = await checkResp.json();
 
@@ -328,6 +329,7 @@
                 // perform check-in using roll number if available, else id
                 const checkinForm = new FormData();
                 checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                checkinForm.append('face_data', imageData);
                 const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
                 const checkData = await checkResp.json();
 
