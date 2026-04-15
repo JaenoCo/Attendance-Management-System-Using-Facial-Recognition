@@ -2238,12 +2238,14 @@ async def get_classes_with_teachers():
         cursor = db.connection.cursor(dictionary=True)
         
         cursor.execute("""
-            SELECT c.class_id, c.class_name, c.teacher_id, 
-                   CONCAT(t.first_name, ' ', t.last_name) as teacher_name,
-                   t.employee_id, COUNT(DISTINCT cr.student_id) as enrolled_count
+            SELECT c.class_id, c.class_name, c.teacher_id,
+                   COALESCE(CONCAT(t.first_name, ' ', t.last_name), 'Not assigned') as teacher_name,
+                   t.employee_id,
+                   COUNT(DISTINCT s.student_id) as enrolled_count,
+                   COUNT(DISTINCT s.student_id) as student_count
             FROM classes c
             LEFT JOIN teachers t ON c.teacher_id = t.teacher_id
-            LEFT JOIN class_registrations cr ON c.class_id = cr.class_id AND cr.status = 'active'
+            LEFT JOIN students s ON c.class_id = s.class_id
             GROUP BY c.class_id, c.class_name, c.teacher_id, t.first_name, t.last_name, t.employee_id
             ORDER BY c.class_name
         """)
@@ -2288,28 +2290,30 @@ async def get_available_students():
 
 @app.get("/api/students-by-class/{class_id}")
 async def get_students_by_class(class_id: int):
-    """Get students registered in a specific class (from open registration) who need professor assignment"""
+    """Get students enrolled in a specific class."""
     cursor = None
     try:
         ensure_connection()
         cursor = db.connection.cursor(dictionary=True)
         
-        # Get students who selected this class in open registration
-        # and get their professor assignment status from class_registrations
         cursor.execute("""
-            SELECT s.student_id, s.roll_number, 
+            SELECT s.student_id,
+                   s.roll_number,
                    CONCAT(s.first_name, ' ', s.last_name) as student_name,
-                   cr.registration_id, cr.teacher_id,
-                   CONCAT(t.first_name, ' ', t.last_name) as teacher_name,
+                   DATE(COALESCE(s.date_of_admission, s.created_at)) as registration_date,
+                   s.face_registered,
+                   s.class_id,
+                   c.class_name,
+                   c.teacher_id,
+                   COALESCE(CONCAT(t.first_name, ' ', t.last_name), 'Not assigned') as teacher_name,
                    t.employee_id,
-                   cr.registration_date,
-                   IF(cr.registration_id IS NULL, 'needs_assignment', cr.status) as assignment_status
+                   'Enrolled' as status
             FROM students s
-            LEFT JOIN class_registrations cr ON s.student_id = cr.student_id AND cr.class_id = %s
-            LEFT JOIN teachers t ON cr.teacher_id = t.teacher_id
-            WHERE s.class_id = %s AND s.face_registered = 1
+            LEFT JOIN classes c ON s.class_id = c.class_id
+            LEFT JOIN teachers t ON c.teacher_id = t.teacher_id
+            WHERE s.class_id = %s
             ORDER BY s.first_name, s.last_name
-        """, (class_id, class_id))
+        """, (class_id,))
         
         students = cursor.fetchall()
         return students or []
