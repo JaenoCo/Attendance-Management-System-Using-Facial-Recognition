@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Registration - Attendance System</title>
+    <title>Professor Registration - Attendance System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -87,21 +87,21 @@
     <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <header class="mb-5 bg-white border border-slate-200 rounded-2xl shadow-soft px-5 py-4 flex items-center justify-between flex-wrap gap-3">
             <div>
-                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Admin Registration Hub</h1>
-                <p class="text-sm text-slate-500 mt-1">Register students and launch capture flow from one workspace</p>
+                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Professor Registration Hub</h1>
+                <p class="text-sm text-slate-500 mt-1">Register professors and launch capture flow from one workspace</p>
             </div>
             <a href="/" class="inline-flex items-center px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors">Back to Dashboard</a>
         </header>
 
         <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
-                <h2 class="font-semibold">1. Student Information</h2>
-                <p class="text-xs text-slate-500 mt-1">Create a new student profile before image capture.</p>
+                <h2 class="font-semibold">1. Professor Information</h2>
+                <p class="text-xs text-slate-500 mt-1">Create a new professor profile before image capture.</p>
 
                 <form id="registrationForm" class="mt-4 space-y-3">
                     <div>
-                        <label for="rollNumber" class="block text-sm font-medium mb-1">Student ID / Roll Number</label>
-                        <input type="text" id="rollNumber" name="rollNumber" required placeholder="e.g. STU-001" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                        <label for="employeeId" class="block text-sm font-medium mb-1">Employee ID</label>
+                        <input type="text" id="employeeId" name="employeeId" required placeholder="e.g. EMP-001" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -115,20 +115,30 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="w-full px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">Register Student</button>
+                    <div>
+                        <label for="email" class="block text-sm font-medium mb-1">Email</label>
+                        <input type="email" id="email" name="email" placeholder="e.g. john.doe@school.com" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="phone" class="block text-sm font-medium mb-1">Phone Number</label>
+                        <input type="tel" id="phone" name="phone" placeholder="e.g. 9876543210" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                    </div>
+
+                    <button type="submit" class="w-full px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">Register Professor</button>
                     <div id="registerMessage" class="hidden rounded-xl px-3 py-2 text-sm"></div>
                 </form>
             </article>
 
             <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
                 <h2 class="font-semibold">2. Open Image Capture</h2>
-                <p class="text-xs text-slate-500 mt-1">Select any registered student and open the dedicated capture screen.</p>
+                <p class="text-xs text-slate-500 mt-1">Select any registered professor and open the dedicated capture screen.</p>
 
                 <div class="mt-4 space-y-3">
                     <div>
-                        <label for="studentSelect" class="block text-sm font-medium mb-1">Select Student</label>
-                        <select id="studentSelect" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
-                            <option value="">-- Choose a registered student --</option>
+                        <label for="professorSelect" class="block text-sm font-medium mb-1">Select Professor</label>
+                        <select id="professorSelect" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                            <option value="">-- Choose a registered professor --</option>
                         </select>
                     </div>
                     <button type="button" id="captureBtn" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors">Open Capture Page</button>
@@ -137,7 +147,7 @@
 
                 <div class="mt-5">
                     <h3 class="text-sm font-semibold">Recently Registered</h3>
-                    <div id="studentsList" class="mt-2 space-y-2"></div>
+                    <div id="professorsList" class="mt-2 space-y-2"></div>
                 </div>
             </article>
         </section>
@@ -156,25 +166,30 @@
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadStudents();
+            await loadProfessors();
         });
 
         document.getElementById('registrationForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const rollNumber = document.getElementById('rollNumber').value;
+            const employeeId = document.getElementById('employeeId').value;
             const firstName = document.getElementById('firstName').value;
             const lastName = document.getElementById('lastName').value;
+            const email = document.getElementById('email').value;
+            const phone = document.getElementById('phone').value;
+
             const messageDiv = document.getElementById('registerMessage');
-            showInlineMessage(messageDiv, 'info', 'Registering student...');
+            showInlineMessage(messageDiv, 'info', 'Registering professor...');
 
             try {
                 const formData = new FormData();
-                formData.append('roll_number', rollNumber);
+                formData.append('employee_id', employeeId);
                 formData.append('first_name', firstName);
                 formData.append('last_name', lastName);
+                formData.append('email', email);
+                formData.append('phone', phone);
 
-                const response = await fetch('/api/admin/register-student', {
+                const response = await fetch('/api/admin/register-teacher', {
                     method: 'POST',
                     body: formData
                 });
@@ -184,9 +199,9 @@
                 if (response.ok && data.status === 'success') {
                     showInlineMessage(messageDiv, 'success', `${data.message} Redirecting to capture page...`);
                     document.getElementById('registrationForm').reset();
-                    await loadStudents();
+                    await loadProfessors();
                     setTimeout(() => {
-                        window.location.href = `/admin/capture-images/${data.student_id}`;
+                        window.location.href = `/admin/capture-images-teacher/${data.teacher_id}`;
                     }, 700);
                 } else {
                     showInlineMessage(messageDiv, 'error', data.message || 'Registration failed');
@@ -198,59 +213,58 @@
         });
 
         document.getElementById('captureBtn').addEventListener('click', async () => {
-            const studentId = document.getElementById('studentSelect').value;
+            const teacherId = document.getElementById('professorSelect').value;
             const captureMessage = document.getElementById('captureMessage');
 
-            if (!studentId) {
-                showInlineMessage(captureMessage, 'error', 'Please select a student first.');
+            if (!teacherId) {
+                showInlineMessage(captureMessage, 'error', 'Please select a professor first.');
                 return;
             }
 
-            window.location.href = `/admin/capture-images/${studentId}`;
+            window.location.href = `/admin/capture-images-teacher/${teacherId}`;
         });
 
-        async function loadStudents() {
+        async function loadProfessors() {
             try {
-                const response = await fetch('/api/students');
-                const students = await response.json();
+                const response = await fetch('/api/teachers');
+                const teachers = await response.json();
 
-                const select = document.getElementById('studentSelect');
-                select.innerHTML = '<option value="">-- Choose a registered student --</option>';
+                const select = document.getElementById('professorSelect');
+                select.innerHTML = '<option value="">-- Choose a registered professor --</option>';
 
-                students.forEach(student => {
+                teachers.forEach(teacher => {
                     const option = document.createElement('option');
-                    option.value = student.student_id;
-                    option.textContent = `${student.first_name} ${student.last_name} (${student.roll_number})`;
+                    option.value = teacher.teacher_id;
+                    option.textContent = `${teacher.first_name} ${teacher.last_name} (${teacher.employee_id})`;
                     select.appendChild(option);
                 });
 
-                const recentStudents = students.slice(-5).reverse();
-                const listDiv = document.getElementById('studentsList');
+                const recentTeachers = teachers.slice(-5).reverse();
+                const listDiv = document.getElementById('professorsList');
 
-                if (recentStudents.length === 0) {
-                    listDiv.innerHTML = '<p class="text-sm text-slate-500">No students registered yet.</p>';
+                if (recentTeachers.length === 0) {
+                    listDiv.innerHTML = '<p class="text-sm text-slate-500">No professors registered yet.</p>';
                 } else {
-                    listDiv.innerHTML = recentStudents.map(s => {
-                        const trained = s.face_training_status === 'trained';
+                    listDiv.innerHTML = recentTeachers.map(t => {
                         return `
                             <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                                 <div>
-                                    <p class="text-sm font-medium text-slate-800">${s.first_name} ${s.last_name}</p>
-                                    <p class="text-xs text-slate-500">${s.roll_number}</p>
+                                    <p class="text-sm font-medium text-slate-800">${t.first_name} ${t.last_name}</p>
+                                    <p class="text-xs text-slate-500">${t.employee_id}${t.email ? ' • ' + t.email : ''}</p>
                                 </div>
-                                <span class="inline-flex px-2 py-1 text-xs rounded-full font-medium ${trained ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
-                                    ${trained ? 'Trained' : 'Pending'}
+                                <span class="inline-flex px-2 py-1 text-xs rounded-full font-medium bg-indigo-100 text-indigo-700">
+                                    Registered
                                 </span>
                             </div>
                         `;
                     }).join('');
                 }
             } catch (error) {
-                console.error('Error loading students:', error);
+                console.error('Error loading professors:', error);
             }
         }
 
-        setInterval(loadStudents, 5000);
+        setInterval(loadProfessors, 5000);
     </script>
 </body>
 <script>

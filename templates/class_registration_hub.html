@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .shadow-soft {
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .dark .text-slate-900 {
+        color: #e2e8f0 !important;
+    }
+
+    .dark .border-slate-200 {
+        border-color: #334155 !important;
+    }
+
+    .dark .bg-white {
+        background-color: #1e1b4b !important;
+    }
+
+    .dark .bg-slate-100 {
+        background-color: #0f172a !important;
+    }
+
+    .dark .text-slate-500 {
+        color: #94a3b8 !important;
+    }
+
+    .dark .text-slate-600 {
+        color: #78716c !important;
+    }
+
+    .dark .hover\:bg-slate-50:hover {
+        background-color: #1e293b !important;
+    }
+
+    .dark .bg-sky-50 {
+        background-color: #23213a !important;
+        color: #7dd3fc !important;
+    }
+</style>
+
+<div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-5 bg-white border border-slate-200 rounded-2xl shadow-soft px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Class Registration Hub</h1>
+                <p class="text-sm text-slate-500 mt-1">Create classes with professors and view enrolled students</p>
+            </div>
+            <a href="/" class="inline-flex items-center px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors">Back to Dashboard</a>
+        </header>
+
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Create New Class -->
+            <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
+                <h2 class="font-semibold">1. Create New Class</h2>
+                <p class="text-xs text-slate-500 mt-1">Create a class and assign a professor.</p>
+
+                <form id="createClassForm" class="mt-4 space-y-3">
+                    <div>
+                        <label for="className" class="block text-sm font-medium mb-1">Class Name <span class="text-red-500">*</span></label>
+                        <input type="text" id="className" name="className" required placeholder="e.g. 10-A, Science-101" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="professorSelect" class="block text-sm font-medium mb-1">Assign Professor <span class="text-red-500">*</span></label>
+                        <select id="professorSelect" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                            <option value="">-- Select a professor --</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="w-full px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200">Create Class</button>
+                    <div id="createClassMessage" class="hidden rounded-xl px-3 py-2 text-sm"></div>
+                </form>
+            </article>
+
+            <!-- View Class & Students -->
+            <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
+                <h2 class="font-semibold">2. View Class & Students</h2>
+                <p class="text-xs text-slate-500 mt-1">Select a class to view class info and enrolled students.</p>
+
+                <div class="mt-4 space-y-3">
+                    <div>
+                        <label for="classSelectView" class="block text-sm font-medium mb-1">Select Class</label>
+                        <select id="classSelectView" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500">
+                            <option value="">-- Choose a class --</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-semibold mt-4 mb-2">Class Information</h3>
+                        <div class="space-y-2">
+                            <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                <div class="text-xs text-slate-500">Class ID</div>
+                                <div class="text-sm font-bold text-slate-700" id="viewClassId">-</div>
+                            </div>
+                            <div class="bg-sky-50 border border-sky-100 rounded-lg p-3">
+                                <div class="text-xs text-sky-600">Class Name</div>
+                                <div class="text-sm font-bold text-sky-700" id="viewClassName">-</div>
+                            </div>
+                            <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+                                <div class="text-xs text-emerald-600">Assigned Professor</div>
+                                <div class="text-sm font-bold text-emerald-700" id="viewProfessor">-</div>
+                            </div>
+                            <div class="bg-orange-50 border border-orange-100 rounded-lg p-3">
+                                <div class="text-xs text-orange-600">Total Students</div>
+                                <div class="text-lg font-bold text-orange-700" id="studentCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <!-- Students Enrolled in Class -->
+        <section class="mt-4 bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
+            <h2 class="font-semibold mb-4">3. Students Enrolled in Selected Class</h2>
+            
+            <div id="noClassSelected" class="text-center text-slate-500 py-8">
+                Select a class to view class info and enrolled students
+            </div>
+
+            <div id="classStudentsContainer" class="hidden overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="text-left px-4 py-3 font-semibold">Roll Number</th>
+                            <th class="text-left px-4 py-3 font-semibold">Student Name</th>
+                            <th class="text-left px-4 py-3 font-semibold">Registration Date</th>
+                            <th class="text-left px-4 py-3 font-semibold">Face Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentsList" class="divide-y divide-slate-200">
+                        <tr class="text-slate-600">
+                            <td colspan="4" class="text-center px-4 py-8">Loading students...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- All Classes Overview -->
+        <section class="mt-4 bg-white border border-slate-200 rounded-2xl shadow-soft p-5">
+            <h2 class="font-semibold mb-4">All Classes Overview</h2>
+            <div id="classesOverview" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="text-center text-slate-500">Loading classes...</div>
+            </div>
+        </section>
+    </div>
+    <script>
+        let allClasses = [];
+        let allTeachers = [];
+        let currentClassStudents = [];
+
+        function showInlineMessage(el, type, text) {
+            const map = {
+                info: 'bg-sky-50 text-sky-700 border border-sky-100',
+                success: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+                error: 'bg-rose-50 text-rose-700 border border-rose-100'
+            };
+            el.className = `rounded-xl px-3 py-2 text-sm ${map[type] || map.info}`;
+            el.textContent = text;
+            el.classList.remove('hidden');
+        }
+
+        function resetSelectedClassView() {
+            currentClassStudents = [];
+            document.getElementById('noClassSelected').classList.remove('hidden');
+            document.getElementById('classStudentsContainer').classList.add('hidden');
+            document.getElementById('viewClassId').textContent = '-';
+            document.getElementById('viewClassName').textContent = '-';
+            document.getElementById('viewProfessor').textContent = '-';
+            document.getElementById('studentCount').textContent = '0';
+        }
+
+        function renderClassStudents(students) {
+            const tbody = document.getElementById('studentsList');
+
+            if (!students.length) {
+                tbody.innerHTML = '<tr class="text-slate-600"><td colspan="4" class="text-center px-4 py-8">No students enrolled in this class</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = students.map((student) => {
+                const faceRegistered = Number(student.face_registered || 0) === 1;
+                const statusText = faceRegistered ? 'Face Registered' : 'Face Pending';
+                const statusClasses = faceRegistered
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-amber-100 text-amber-700';
+                const registrationDate = student.registration_date
+                    ? new Date(student.registration_date).toLocaleDateString()
+                    : '-';
+
+                return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-4 py-3 font-medium">${student.roll_number || '-'}</td>
+                        <td class="px-4 py-3">${student.student_name || '-'}</td>
+                        <td class="px-4 py-3 text-xs">${registrationDate}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-block text-xs px-2 py-1 rounded-full font-semibold ${statusClasses}">${statusText}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function showSelectedClass(classId) {
+            if (!classId) {
+                resetSelectedClassView();
+                return;
+            }
+
+            document.getElementById('noClassSelected').classList.add('hidden');
+            document.getElementById('classStudentsContainer').classList.remove('hidden');
+            document.getElementById('studentsList').innerHTML = '<tr class="text-slate-600"><td colspan="4" class="text-center px-4 py-8">Loading students...</td></tr>';
+
+            const selectedClass = allClasses.find((cls) => String(cls.class_id) === String(classId));
+            const classCount = Number(selectedClass?.enrolled_count ?? selectedClass?.student_count ?? 0);
+
+            document.getElementById('viewClassId').textContent = selectedClass?.class_id ?? classId;
+            document.getElementById('viewClassName').textContent = selectedClass?.class_name || '-';
+            document.getElementById('viewProfessor').textContent = selectedClass?.teacher_name || 'Not assigned';
+            document.getElementById('studentCount').textContent = classCount;
+
+            try {
+                const response = await fetch(`/api/students-by-class/${classId}`);
+                const students = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(students?.message || 'Failed to load students');
+                }
+
+                const enrolledStudents = Array.isArray(students) ? students : [];
+                currentClassStudents = enrolledStudents;
+                document.getElementById('studentCount').textContent = enrolledStudents.length;
+                renderClassStudents(enrolledStudents);
+            } catch (error) {
+                console.error('Failed to load selected class:', error);
+                document.getElementById('studentsList').innerHTML = '<tr class="text-slate-600"><td colspan="4" class="text-center px-4 py-8">Error loading students</td></tr>';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            resetSelectedClassView();
+            await loadClasses();
+            await loadTeachers();
+            await loadClassesOverview();
+        });
+
+        async function loadTeachers() {
+            try {
+                const response = await fetch('/api/teachers');
+                allTeachers = await response.json();
+
+                const professorSelect = document.getElementById('professorSelect');
+                professorSelect.innerHTML = '<option value="">-- Select a professor --</option>';
+
+                allTeachers.forEach(teacher => {
+                    const option = document.createElement('option');
+                    option.value = teacher.teacher_id;
+                    option.textContent = `${teacher.teacher_name} (${teacher.employee_id})`;
+                    professorSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load teachers:', error);
+            }
+        }
+
+        async function loadClasses() {
+            try {
+                const response = await fetch('/api/classes-with-teachers');
+                allClasses = await response.json();
+
+                const classSelect = document.getElementById('classSelectView');
+                classSelect.innerHTML = '<option value="">-- Choose a class --</option>';
+
+                allClasses.forEach(cls => {
+                    const option = document.createElement('option');
+                    option.value = cls.class_id;
+                    const teacherName = cls.teacher_name || 'Not assigned';
+                    const studentCount = Number(cls.enrolled_count ?? cls.student_count ?? 0);
+                    option.textContent = `${cls.class_name} (Prof: ${teacherName}, ${studentCount} students)`;
+                    classSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load classes:', error);
+            }
+        }
+
+        async function loadClassesOverview() {
+            try {
+                const container = document.getElementById('classesOverview');
+                container.innerHTML = '';
+
+                if (!allClasses.length) {
+                    container.innerHTML = '<div class="text-center text-slate-500 col-span-full">No classes found. Create a new class to get started.</div>';
+                    return;
+                }
+
+                allClasses.forEach(cls => {
+                    const studentCount = Number(cls.enrolled_count ?? cls.student_count ?? 0);
+                    const card = document.createElement('div');
+                    card.className = 'border border-slate-200 rounded-xl p-4 bg-gradient-to-br from-slate-50 to-slate-100 hover:shadow-md transition-shadow cursor-pointer';
+                    card.onclick = () => {
+                        document.getElementById('classSelectView').value = cls.class_id;
+                        showSelectedClass(cls.class_id);
+                    };
+                    card.innerHTML = `
+                        <h3 class="font-semibold text-indigo-600">${cls.class_name}</h3>
+                        <p class="text-xs text-slate-600 mt-1">Professor: ${cls.teacher_name || 'Not assigned'}</p>
+                        <p class="text-xs text-slate-600">Employee ID: ${cls.employee_id || '-'}</p>
+                        <div class="mt-3 pt-3 border-t border-slate-200">
+                            <span class="inline-block bg-indigo-100 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">${studentCount} students</span>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Failed to load classes overview:', error);
+            }
+        }
+
+        document.getElementById('createClassForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const className = document.getElementById('className').value.trim();
+            const teacherId = document.getElementById('professorSelect').value;
+            const messageDiv = document.getElementById('createClassMessage');
+
+            if (!className || !teacherId) {
+                showInlineMessage(messageDiv, 'error', 'Please fill in all fields');
+                return;
+            }
+
+            showInlineMessage(messageDiv, 'info', 'Creating class...');
+
+            try {
+                const formData = new FormData();
+                formData.append('class_name', className);
+                formData.append('teacher_id', teacherId);
+
+                const response = await fetch('/api/class/create', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    showInlineMessage(messageDiv, 'success', data.message);
+                    document.getElementById('createClassForm').reset();
+                    await loadClasses();
+                    await loadClassesOverview();
+                } else {
+                    showInlineMessage(messageDiv, 'error', data.message || 'Failed to create class');
+                }
+            } catch (error) {
+                showInlineMessage(messageDiv, 'error', error.message || 'Unknown error occurred');
+                console.error('Error:', error);
+            }
+        });
+
+        document.getElementById('classSelectView').addEventListener('change', async (e) => {
+            await showSelectedClass(e.target.value);
+        });
+    </script>
+
+{% endblock %}
+

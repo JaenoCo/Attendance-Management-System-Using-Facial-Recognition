@@ -24,6 +24,17 @@ FACE_EMBEDDING_MODEL = 'openface_nn4.small2.v1.t7'
 RECOGNIZER_MODEL = 'output/recognizer.pickle'
 LABEL_ENCODER = 'output/le.pickle'
 
+# Image Upload Validation
+IMAGE_VALIDATION = {
+    'max_size_mb': 5,
+    'max_size_bytes': 5 * 1024 * 1024,
+    'allowed_formats': ['jpeg', 'jpg', 'png'],
+    'min_width': 100,
+    'min_height': 100,
+    'max_width': 4096,
+    'max_height': 4096
+}
+
 # Recognition Confidence Threshold
 # Lowered detection threshold to improve face detection in varied lighting/angles
 CONFIDENCE_THRESHOLD = float(os.getenv('CONFIDENCE_THRESHOLD', 0.35))

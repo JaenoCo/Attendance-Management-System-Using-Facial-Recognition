@@ -81,7 +81,9 @@
         processing: false,
         lastRecognitionTime: 0,
         lastAttendanceRefreshTime: 0,
-        recognitionCooldownMs: 0
+        recognitionCooldownMs: 0,
+        attendance: [],
+        checkedInStudents: new Set()
     };
 
     const video = document.getElementById('enrollVideo');
@@ -184,9 +186,19 @@
                         document.getElementById('enrollStatus').textContent = `Recognized: ${student.name}`;
                         setProgress(85);
 
+                        const attendanceKey = getStudentAttendanceKey(student.roll_number || student.id || student.student_id || student.name);
+                        if (state.checkedInStudents.has(attendanceKey)) {
+                            document.getElementById('enrollStatus').textContent = 'Already checked in today';
+                            setProgress(100);
+                            notify('Already checked in today', 'warning');
+                            state.lastRecognitionTime = Date.now();
+                            return;
+                        }
+
                         // perform check-in using roll number if available, else id
                         const checkinForm = new FormData();
                         checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                        checkinForm.append('face_data', imageData);
                         const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
                         const checkData = await checkResp.json();
 
@@ -196,14 +208,12 @@
                             setProgress(100);
                             notify(latestMessage, 'success');
                             addLatestAttendanceRecord(checkData.record);
-                            await refreshAttendanceIfNeeded(true);
                         } else if (checkData.status === 'warning') {
                             const latestMessage = formatLatestCheckinMessage(student, checkData.record);
                             document.getElementById('enrollStatus').textContent = latestMessage;
                             setProgress(100);
                             notify(latestMessage, 'success');
                             addLatestAttendanceRecord(checkData.record);
-                            await refreshAttendanceIfNeeded(true);
                         } else {
                             document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
                             setProgress(45);
@@ -307,9 +317,19 @@
                 document.getElementById('enrollStatus').textContent = `Recognized: ${student.name}`;
                 setProgress(85);
 
+                const attendanceKey = getStudentAttendanceKey(student.roll_number || student.id || student.student_id || student.name);
+                if (state.checkedInStudents.has(attendanceKey)) {
+                    document.getElementById('enrollStatus').textContent = 'Already checked in today';
+                    setProgress(100);
+                    notify('Already checked in today', 'warning');
+                    state.lastRecognitionTime = Date.now();
+                    return;
+                }
+
                 // perform check-in using roll number if available, else id
                 const checkinForm = new FormData();
                 checkinForm.append('student_id', student.roll_number || student.id || student.id);
+                checkinForm.append('face_data', imageData);
                 const checkResp = await fetch('/api/attendance/checkin', { method: 'POST', body: checkinForm });
                 const checkData = await checkResp.json();
 
@@ -319,15 +339,12 @@
                     setProgress(100);
                     notify(latestMessage, 'success');
                     addLatestAttendanceRecord(checkData.record);
-                    // refresh recent attendance list
-                    await loadAttendanceToday();
                 } else if (checkData.status === 'warning') {
                     const latestMessage = formatLatestCheckinMessage(student, checkData.record);
                     document.getElementById('enrollStatus').textContent = latestMessage;
                     setProgress(100);
                     notify(latestMessage, 'success');
                     addLatestAttendanceRecord(checkData.record);
-                    await loadAttendanceToday();
                 } else {
                     document.getElementById('enrollStatus').textContent = checkData.message || 'Check-in failed';
                     setProgress(45);
@@ -361,6 +378,54 @@
         const name = student?.name || `${record?.first_name || ''} ${record?.last_name || ''}`.trim() || 'Student';
         const timeText = formatTime(record?.entry_time || student?.time || record?.created_at);
         return `Latest check-in: ${name} at ${timeText}`;
+    }
+
+    function getTodayDateKey() {
+        return new Date().toLocaleDateString('en-CA');
+    }
+
+    function getStudentAttendanceKey(studentId, attendanceDate = getTodayDateKey()) {
+        return `${studentId || ''}|${attendanceDate || ''}`;
+    }
+
+    function getAttendanceIdentity(row = {}) {
+        const studentId = row.student_id || row.roll_number || '';
+        const attendanceDate = row.attendance_date || row.date || '';
+
+        if (studentId || attendanceDate) {
+            return getStudentAttendanceKey(studentId, attendanceDate);
+        }
+
+        if (row.log_id !== undefined && row.log_id !== null && String(row.log_id).trim() !== '') {
+            return `log:${row.log_id}`;
+        }
+
+        return `fallback:${row.entry_time || row.time || ''}`;
+    }
+
+    function dedupeAttendanceRows(rows = []) {
+        const uniqueRows = [];
+        const seenKeys = new Set();
+
+        for (const row of sortRecentRows(rows)) {
+            const key = getAttendanceIdentity(row);
+            if (seenKeys.has(key)) {
+                continue;
+            }
+
+            seenKeys.add(key);
+            uniqueRows.push(row);
+        }
+
+        return uniqueRows;
+    }
+
+    function syncCheckedInStudents(rows = []) {
+        state.checkedInStudents = new Set(
+            (rows || [])
+                .filter((row) => row && row.entry_time)
+                .map((row) => getAttendanceIdentity(row))
+        );
     }
 
     function getAttendanceRowTimestamp(row = {}) {
@@ -399,12 +464,16 @@
     }
 
     function getAttendanceRowKey(row = {}) {
+        const studentId = row.student_id || row.roll_number || '';
+        const dateValue = row.attendance_date || row.date || '';
+        if (studentId || dateValue) {
+            return `student:${studentId}|${dateValue}`;
+        }
+
         if (row.log_id !== undefined && row.log_id !== null && String(row.log_id).trim() !== '') {
             return `log:${row.log_id}`;
         }
 
-        const studentId = row.student_id || row.roll_number || '';
-        const dateValue = row.attendance_date || row.date || '';
         const timeValue = row.entry_time || row.created_at || row.time || '';
         const status = row.status || '';
         return `fallback:${studentId}|${dateValue}|${timeValue}|${status}`;
@@ -429,40 +498,56 @@
             return;
         }
 
-        state.attendance = [
-            record,
-            ...(state.attendance || []).filter((item) => getAttendanceRowKey(item) !== getAttendanceRowKey(record))
-        ];
+        state.attendance = dedupeAttendanceRows([record, ...(state.attendance || [])]);
+        syncCheckedInStudents(state.attendance);
         renderAttendanceTable();
     }
 
     function mergeAttendanceRows(rows = []) {
-        const byId = new Map();
-        for (const row of [...(state.attendance || []), ...rows]) {
-            byId.set(getAttendanceRowKey(row), row);
+        state.attendance = dedupeAttendanceRows([...(state.attendance || []), ...rows]);
+        syncCheckedInStudents(state.attendance);
+    }
+
+    async function deleteAttendanceRecord(logId) {
+        if (!logId || !confirm('Delete this attendance record?')) {
+            return;
         }
 
-        state.attendance = sortRecentRows([...byId.values()]);
+        try {
+            const response = await fetch(`/api/attendance/${logId}`, { method: 'DELETE' });
+            const data = await response.json();
+
+            if (!response.ok || data.status === 'error') {
+                throw new Error(data.error || data.message || 'Failed to delete attendance record');
+            }
+
+            notify(data.message || 'Attendance record deleted', 'success');
+            state.attendance = (state.attendance || []).filter((row) => Number(row.log_id || 0) !== Number(logId));
+            syncCheckedInStudents(state.attendance);
+            renderAttendanceTable();
+        } catch (error) {
+            notify(error.message || 'Failed to delete attendance record', 'error');
+        }
     }
 
     async function refreshAttendanceIfNeeded(force = false) {
-        await loadAttendanceToday();
+        renderAttendanceTable();
         state.lastAttendanceRefreshTime = Date.now();
     }
 
     function renderAttendanceTable() {
         const container = document.getElementById('recentAttendance');
-        const presentRows = sortRecentRows(state.attendance || []).filter(r => r.entry_time).slice(0, 10);
+        const presentRows = dedupeAttendanceRows(state.attendance || []).filter(r => r.entry_time).slice(0, 10);
         if (!presentRows.length) {
             container.innerHTML = '<div class="text-slate-500">No check-ins yet today.</div>';
             return;
         }
 
-        const table = [`<div class="overflow-x-auto"><table class="min-w-full text-sm border-separate border-spacing-y-2"><thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-2 py-2 font-medium">Student</th><th class="text-left px-2 py-2 font-medium">Roll</th><th class="text-left px-2 py-2 font-medium">Date</th><th class="text-left px-2 py-2 font-medium">Time</th></tr></thead><tbody>`];
+        const table = [`<div class="overflow-x-auto"><table class="min-w-full text-sm border-separate border-spacing-y-2"><thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-2 py-2 font-medium">Student</th><th class="text-left px-2 py-2 font-medium">Roll</th><th class="text-left px-2 py-2 font-medium">Date</th><th class="text-left px-2 py-2 font-medium">Time</th><th class="text-left px-2 py-2 font-medium">Action</th></tr></thead><tbody>`];
         presentRows.forEach(r => {
             const name = `${r.first_name || ''} ${r.last_name || ''}`.trim() || '--';
             const date = r.attendance_date || '';
-            table.push(`<tr class="hover:bg-slate-50"><td class="px-2 py-2">${name}</td><td class="px-2 py-2">${r.roll_number || '--'}</td><td class="px-2 py-2">${date}</td><td class="px-2 py-2">${formatTime(r.entry_time)}</td></tr>`);
+            table.push(`<tr class="hover:bg-slate-50"><td class="px-2 py-2">${name}</td><td class="px-2 py-2">${r.roll_number || '--'}</td><td class="px-2 py-2">${date}</td><td class="px-2 py-2">${formatTime(r.entry_time)}</td><td class="px-2 py-2">${r.log_id ? `<button type="button" class="rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 transition-colors" onclick="deleteAttendanceRecord(${Number(r.log_id)})">Delete</button>` : '<span class="text-slate-400">—</span>'}</td></tr>`);
         });
         table.push('</tbody></table></div>');
         container.innerHTML = table.join('');
@@ -496,8 +581,7 @@
     (function init() {
         // No student selection required for auto recognition
     })();
-    // load recent attendance and poll
-    loadAttendanceToday();
-    setInterval(loadAttendanceToday, 15000);
+    // Keep the page empty until a new detection/check-in happens.
+    renderAttendanceTable();
 </script>
 {% endblock %}

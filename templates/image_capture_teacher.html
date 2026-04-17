@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capture Professor Face Images - Attendance System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'sans-serif']
+                    },
+                    boxShadow: {
+                        soft: '0 10px 28px rgba(15, 23, 42, 0.1)'
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+    <style>
+        :root {
+            --page-bg-1: #f1f5f9;
+            --page-bg-2: #e2e8f0;
+            --text-main: #0f172a;
+        }
+        .dark {
+            --page-bg-1: #18181b;
+            --page-bg-2: #27272a;
+            --text-main: #f1f5f9;
+        }
+        body { color: var(--text-main); background: none; }
+        .dark .bg-white, .dark .bg-slate-50, .dark .bg-indigo-50, .dark .bg-white\/85, .dark .bg-white\/90, .dark .bg-brand-100 {
+            background-color: #23272f !important; color: #f1f5f9 !important;
+        }
+        .dark .text-slate-900, .dark .text-slate-600, .dark .text-slate-700, .dark .text-indigo-800, .dark .text-brand-700, .dark .text-slate-500 {
+            color: #f1f5f9 !important;
+        }
+        .dark .border-slate-200, .dark .border-indigo-100, .dark .border-slate-200\/80 {
+            border-color: #444 !important;
+        }
+    </style>
+<body class="min-h-screen bg-slate-100 text-slate-900">
+    <body class="min-h-screen bg-slate-100 text-slate-900" id="mainBody">
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="bg-white border border-slate-200 rounded-2xl shadow-soft p-5 flex items-center justify-between flex-wrap gap-3">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Capture Professor Face Images</h1>
+                <p class="text-sm text-slate-500 mt-1">Collect high quality face samples for training.</p>
+            </div>
+            <a href="/admin/professor-registration-hub" class="inline-flex items-center px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors">Back to Registration</a>
+        </header>
+
+        <section class="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <article class="xl:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-soft p-4">
+                <div class="rounded-2xl border-2 border-indigo-200 bg-slate-900 relative overflow-hidden aspect-[4/3]" id="cameraFeed">
+                    <div class="absolute inset-0 grid place-items-center text-slate-300 text-sm">Starting camera...</div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p class="text-xs text-slate-500">Captured</p>
+                        <p class="text-xl font-semibold" id="captureCount">0</p>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p class="text-xs text-slate-500">Detection</p>
+                        <p class="text-sm font-semibold" id="recognitionLabel">Idle</p>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p class="text-xs text-slate-500">Status</p>
+                        <p class="text-sm font-semibold" id="captureState">Ready</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="bg-white border border-slate-200 rounded-2xl shadow-soft p-4">
+                <h2 class="font-semibold">Professor Details</h2>
+                <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm space-y-1">
+                    <p><span class="text-slate-500">Name:</span> <span class="font-medium">{{ teacher.first_name }} {{ teacher.last_name }}</span></p>
+                    <p><span class="text-slate-500">Employee ID:</span> <span class="font-medium">{{ teacher.employee_id }}</span></p>
+                    <p><span class="text-slate-500">Teacher ID:</span> <span class="font-medium">{{ teacher.teacher_id }}</span></p>
+                </div>
+
+                <div class="mt-4 space-y-2">
+                    <button class="w-full px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200" id="captureBtn" onclick="captureImage()">Capture Image</button>
+                    <button class="w-full px-4 py-2.5 rounded-xl border border-rose-300 text-rose-700 text-sm font-semibold hover:bg-rose-50 transition-colors" id="stopBtn" onclick="stopCamera()">Stop Camera</button>
+                    <button class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold hover:bg-slate-50 transition-colors" onclick="window.location.href='/admin/professor-registration-hub'">Done</button>
+                </div>
+
+                <div id="messageBox" class="hidden mt-3 rounded-xl px-3 py-2 text-sm"></div>
+            </article>
+        </section>
+    </div>
+
+    <script>
+        const teacherId = Number("{{ teacher.teacher_id }}");
+        let cameraStream = null;
+        let captureCount = 0;
+        let isCapturing = false;
+        let recognitionIntervalId = null;
+        let recognitionInProgress = false;
+        let lastDetectedFaces = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            startCamera();
+            window.addEventListener('beforeunload', stopCamera);
+            window.addEventListener('resize', () => {
+                const video = document.getElementById('captureVideo');
+                resizeOverlayCanvas(video);
+                drawDetectedFaces(lastDetectedFaces);
+            });
+        });
+
+        function setCaptureState(text) {
+            document.getElementById('captureState').textContent = text;
+        }
+
+        function showMessage(message, type) {
+            const box = document.getElementById('messageBox');
+            const map = {
+                info: 'bg-sky-50 text-sky-700 border border-sky-100',
+                success: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+                error: 'bg-rose-50 text-rose-700 border border-rose-100'
+            };
+            box.className = `mt-3 rounded-xl px-3 py-2 text-sm ${map[type] || map.info}`;
+            box.textContent = message;
+            box.classList.remove('hidden');
+        }
+
+        function resizeOverlayCanvas(video) {
+            const overlay = document.getElementById('overlayCanvas');
+            if (!video || !overlay || !video.videoWidth || !video.videoHeight) return;
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+        }
+
+        function drawDetectedFaces(faces = []) {
+            const overlay = document.getElementById('overlayCanvas');
+            if (!overlay) return;
+
+            const ctx = overlay.getContext('2d');
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            faces.forEach(face => {
+                const [startX, startY, endX, endY] = face.box || [];
+                if ([startX, startY, endX, endY].some(v => typeof v !== 'number')) {
+                    return;
+                }
+
+                const confidence = Number(face.confidence || 0);
+                const label = `Face ${(confidence * 100).toFixed(1)}%`;
+
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+
+                ctx.fillStyle = '#22c55e';
+                ctx.font = 'bold 14px Manrope';
+                const textY = startY - 8 > 14 ? startY - 8 : startY + 18;
+                ctx.fillText(label, startX, textY);
+            });
+        }
+
+        function setRecognitionLabel(text) {
+            const label = document.getElementById('recognitionLabel');
+            if (label) {
+                label.textContent = text;
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 },
+                    audio: false
+                });
+
+                cameraStream = stream;
+                const video = document.createElement('video');
+                video.id = 'captureVideo';
+                video.className = 'w-full h-full object-cover';
+                video.srcObject = stream;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.muted = true;
+
+                const feed = document.getElementById('cameraFeed');
+                feed.innerHTML = '';
+                feed.appendChild(video);
+
+                const overlay = document.createElement('canvas');
+                overlay.id = 'overlayCanvas';
+                overlay.className = 'absolute inset-0 w-full h-full pointer-events-none';
+                feed.appendChild(overlay);
+
+                video.onloadedmetadata = () => {
+                    resizeOverlayCanvas(video);
+                    drawDetectedFaces([]);
+                };
+
+                video.onresize = () => {
+                    resizeOverlayCanvas(video);
+                    drawDetectedFaces(lastDetectedFaces);
+                };
+
+                startLiveRecognition();
+                setCaptureState('Camera Active');
+                showMessage('Camera started. Face boxes are shown live. Click Capture Image to save.', 'info');
+            } catch (error) {
+                showMessage('Camera error: ' + error.message, 'error');
+            }
+        }
+
+        function getCurrentFrameData(video) {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/jpeg');
+        }
+
+        async function pollRecognition() {
+            if (recognitionInProgress || !cameraStream) {
+                return;
+            }
+
+            const video = document.getElementById('captureVideo');
+            if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+                return;
+            }
+
+            recognitionInProgress = true;
+            try {
+                const imageData = getCurrentFrameData(video);
+                const response = await fetch('/api/face/detect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                const faces = Array.isArray(data.faces) ? data.faces : [];
+                lastDetectedFaces = faces;
+                drawDetectedFaces(faces);
+
+                setRecognitionLabel(faces.length > 0 ? 'Face Detected' : 'No Face');
+            } catch (error) {
+                setRecognitionLabel('Detection Unavailable');
+            } finally {
+                recognitionInProgress = false;
+            }
+        }
+
+        function startLiveRecognition() {
+            if (recognitionIntervalId) {
+                clearInterval(recognitionIntervalId);
+            }
+
+            setRecognitionLabel('Scanning...');
+            recognitionIntervalId = setInterval(pollRecognition, 700);
+        }
+
+        function stopLiveRecognition() {
+            if (recognitionIntervalId) {
+                clearInterval(recognitionIntervalId);
+                recognitionIntervalId = null;
+            }
+            recognitionInProgress = false;
+            lastDetectedFaces = [];
+            drawDetectedFaces([]);
+            setRecognitionLabel('Idle');
+        }
+
+        async function captureImage() {
+            if (isCapturing) {
+                return;
+            }
+
+            const video = document.getElementById('captureVideo');
+            if (!video || !cameraStream) {
+                showMessage('Camera is not active.', 'error');
+                return;
+            }
+
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                showMessage('Video not ready yet. Try again.', 'error');
+                return;
+            }
+
+            try {
+                isCapturing = true;
+                const captureBtn = document.getElementById('captureBtn');
+                captureBtn.disabled = true;
+                setCaptureState('Capturing...');
+
+                const imageData = getCurrentFrameData(video);
+
+                const formData = new FormData();
+                formData.append('teacher_id', teacherId);
+                formData.append('image_data', imageData);
+
+                const response = await fetch('/api/face/capture-teacher', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json().catch(() => ({}));
+
+                if (response.ok && data.status === 'success') {
+                    captureCount += 1;
+                    document.getElementById('captureCount').textContent = String(captureCount);
+                    showMessage('Image captured successfully.', 'success');
+                    setCaptureState('Capture Saved');
+                } else {
+                    showMessage(data.message || 'Capture failed.', 'error');
+                    setCaptureState('Capture Failed');
+                }
+            } catch (error) {
+                showMessage('Capture error: ' + error.message, 'error');
+                setCaptureState('Capture Failed');
+            } finally {
+                isCapturing = false;
+                const captureBtn = document.getElementById('captureBtn');
+                captureBtn.disabled = false;
+            }
+        }
+
+        function stopCamera() {
+            stopLiveRecognition();
+
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+
+            const feed = document.getElementById('cameraFeed');
+            if (feed) {
+                feed.innerHTML = '<div class="absolute inset-0 grid place-items-center text-slate-300 text-sm">Camera stopped.</div>';
+            }
+
+            isCapturing = false;
+            const captureBtn = document.getElementById('captureBtn');
+            if (captureBtn) {
+                captureBtn.disabled = false;
+            }
+            setCaptureState('Stopped');
+        }
+    </script>
+</body>
+<script>
+// Sync dark mode from localStorage
+try {
+    const settings = JSON.parse(localStorage.getItem('attendance-ui-settings') || '{}');
+    if (settings.toggleDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+} catch {}
+</script>
+</html>

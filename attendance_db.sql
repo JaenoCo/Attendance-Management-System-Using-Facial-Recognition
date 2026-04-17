@@ -57,13 +57,66 @@ CREATE TABLE IF NOT EXISTS parent_contacts (
 CREATE TABLE IF NOT EXISTS attendance_logs (
     log_id INT PRIMARY KEY AUTO_INCREMENT,
     student_id INT NOT NULL,
+    schedule_id INT NULL,
+    schedule_override_id INT NULL,
+    teacher_id INT NULL,
+    class_id INT NULL,
+    subject VARCHAR(150) NULL,
     date DATE NOT NULL,
     entry_time TIME,
     exit_time TIME,
     status ENUM('present', 'absent', 'late', 'leave') DEFAULT 'present',
     remarks VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
+);
+
+-- Class Schedules Table
+CREATE TABLE IF NOT EXISTS class_schedules (
+    schedule_id INT PRIMARY KEY AUTO_INCREMENT,
+    teacher_id INT NOT NULL,
+    class_id INT NOT NULL,
+    subject VARCHAR(150) NOT NULL,
+    room VARCHAR(100) DEFAULT NULL,
+    day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+    INDEX idx_schedule_teacher_day (teacher_id, day_of_week),
+    INDEX idx_schedule_class_day (class_id, day_of_week),
+    INDEX idx_schedule_day_time (day_of_week, start_time, end_time)
+);
+
+-- Schedule Override Table
+CREATE TABLE IF NOT EXISTS schedule_overrides (
+    override_id INT PRIMARY KEY AUTO_INCREMENT,
+    schedule_id INT NOT NULL,
+    override_date DATE NOT NULL,
+    original_day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+    original_start_time TIME NOT NULL,
+    original_end_time TIME NOT NULL,
+    effective_day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+    effective_start_time TIME NOT NULL,
+    effective_end_time TIME NOT NULL,
+    teacher_id INT DEFAULT NULL,
+    class_id INT DEFAULT NULL,
+    subject VARCHAR(150) DEFAULT NULL,
+    room VARCHAR(100) DEFAULT NULL,
+    override_type ENUM('reschedule', 'cancel', 'room_change', 'substitute') NOT NULL DEFAULT 'reschedule',
+    reason VARCHAR(255) DEFAULT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (schedule_id) REFERENCES class_schedules(schedule_id) ON DELETE CASCADE,
+    FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE SET NULL,
+    INDEX idx_override_schedule_date (schedule_id, override_date),
+    INDEX idx_override_date_time (override_date, effective_start_time, effective_end_time),
+    INDEX idx_override_class_date (class_id, override_date)
 );
 
 -- Attendance Scan Logs (Raw scan data)
@@ -121,8 +174,28 @@ CREATE TABLE IF NOT EXISTS training_sessions (
     INDEX idx_session_status (status)
 );
 
+-- Class Registration Table (Tracks student enrollments in classes with assigned teachers)
+CREATE TABLE IF NOT EXISTS class_registrations (
+    registration_id INT PRIMARY KEY AUTO_INCREMENT,
+    student_id INT NOT NULL,
+    class_id INT NOT NULL,
+    teacher_id INT,
+    registration_date DATE NOT NULL,
+    status ENUM('active', 'inactive', 'completed') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_student_class (student_id, class_id),
+    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+    FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
+    INDEX idx_class_registrations (class_id),
+    INDEX idx_student_registrations (student_id),
+    INDEX idx_teacher_registrations (teacher_id)
+);
+
 -- Create indexes for better query performance
 CREATE INDEX idx_student_date ON attendance_logs(student_id, date);
+CREATE INDEX idx_attendance_schedule ON attendance_logs(schedule_id, schedule_override_id);
+CREATE INDEX idx_attendance_class_date ON attendance_logs(class_id, date);
 CREATE INDEX idx_class_id ON students(class_id);
 CREATE INDEX idx_teacher_id ON classes(teacher_id);
 CREATE INDEX idx_scan_student_type ON attendance_scans(student_id, scan_type);
