@@ -1,0 +1,5 @@
+2026-04-16 11:47:59,153 - root - INFO - School Attendance System Starting...
+2026-04-16 11:47:59,318 - apscheduler.scheduler - INFO - Scheduler started
+2026-04-16 11:48:01,758 - database - INFO - [INFO] Connection pool 'attendance_pool' created
+2026-04-16 11:48:01,758 - database - INFO - [INFO] Connected to school_attendance database (attempt 1)
+2026-04-16 11:48:02,123 - apscheduler.scheduler - INFO - Added job "Automatic Face Model Training" to job store "default"

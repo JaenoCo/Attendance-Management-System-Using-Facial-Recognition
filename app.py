@@ -59,7 +59,6 @@ app = FastAPI(title="School Attendance System", version="2.0")
 
 # Setup rate limiting
 app.state.limiter = limiter
-app.add_exception_handler(Exception, limiter.http_exception_handler)
 
 # Setup logging
 logger = LoggingSetup.setup_logging()
